@@ -4,19 +4,19 @@ public class LoginRequest {
 
     String id;
 
-    String name;
+    String pw;
 
     public LoginRequest(String message) {
         String[] value = message.split(",");
         id = value[0];
-        name = value[1];
+        pw = value[1];
     }
 
     public String getId() {
         return id;
     }
 
-    public String getName() {
-        return name;
+    public String getPw() {
+        return pw;
     }
 }
