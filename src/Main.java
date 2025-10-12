@@ -1,4 +1,4 @@
-import app.Application;
+import app.ServerApplication;
 import domain.User;
 import thread.ClientExitException;
 import thread.ServerThread;
@@ -16,7 +16,7 @@ import java.util.List;
 public class Main {
     public static void main(String[] args) {
 
-        new Application();
+        new ServerApplication();
 
     }
 }

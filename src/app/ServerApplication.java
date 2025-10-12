@@ -13,7 +13,7 @@ import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
 
-public class Application {
+public class ServerApplication {
 
     public static List<Socket> sockets = new ArrayList<>();
 
@@ -21,7 +21,7 @@ public class Application {
     private ChatDao chatDao;
     private ChatService chatService;
 
-    public Application() {
+    public ServerApplication() {
         try {
             // 1. Oracle JDBC 드라이버 로딩
             Class.forName("oracle.jdbc.driver.OracleDriver");

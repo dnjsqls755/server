@@ -1,6 +1,6 @@
 package thread;
 
-import app.Application;
+import app.ServerApplication;
 import dao.ChatDao;
 import domain.ChatRoom;
 import domain.User;
@@ -46,7 +46,7 @@ public class ServerThread extends Thread {
                         socket.close();
                         System.out.println("socket closed.");
 
-                        Application.sockets.remove(socket);
+                        ServerApplication.sockets.remove(socket);
                         return;
 
                     } catch (Exception e) {
@@ -94,7 +94,37 @@ public class ServerThread extends Thread {
                 UserListResponse userListRes = new UserListResponse(ChatDao.LOBBY_CHAT_NAME, chatService.getUsers());
                 sendMessage(userListRes);
                 break;
+                
+            case SIGNUP:
+                JoinRequest joinReq = new JoinRequest(message);
 
+                // 아이디 중복 확인
+                if (chatService.isUserIdDuplicate(joinReq.getUserId())) {
+                    PrintWriter writer = new PrintWriter(socket.getOutputStream());
+                    writer.println("SIGNUP_DUPLICATE_ID");
+                    writer.flush();
+                    break;
+                }
+
+                // 비밀번호 유효성 검사
+                if (!isValidPassword(joinReq.getPassword())) {
+                    PrintWriter writer = new PrintWriter(socket.getOutputStream());
+                    writer.println("SIGNUP_INVALID_PASSWORD");
+                    writer.flush();
+                    break;
+                }
+
+                // 회원가입 처리
+                boolean success = chatService.signupUser(joinReq);
+                PrintWriter writer = new PrintWriter(socket.getOutputStream());
+                if (success) {
+                    writer.println("SIGNUP_SUCCESS");
+                } else {
+                    writer.println("SIGNUP_FAIL");
+                }
+                writer.flush();
+                break;
+                
             case MESSAGE:
                 // [to 채팅방에 있는 다른 사용자] 메시지 전송
                 MessageResponse messageResponse = new MessageResponse(message);
@@ -209,7 +239,7 @@ public class ServerThread extends Thread {
                 case CREATE_CHAT:
                     CreateChatRoomResponse createChatRoomResponse = (CreateChatRoomResponse) dto;
 
-                    for (Socket s : Application.sockets) {
+                    for (Socket s : ServerApplication.sockets) {
                         sender = new PrintWriter(s.getOutputStream());
                         sender.println(createChatRoomResponse);
                         sender.flush();
@@ -219,7 +249,7 @@ public class ServerThread extends Thread {
                 case CHAT_ROOM_LIST:
                     ChatRoomListResponse chatRoomListResponse = (ChatRoomListResponse) dto;
 
-                    for (Socket s : Application.sockets) {
+                    for (Socket s : ServerApplication.sockets) {
                         sender = new PrintWriter(s.getOutputStream());
                         sender.println(chatRoomListResponse);
                         sender.flush();
@@ -231,5 +261,12 @@ public class ServerThread extends Thread {
             e.printStackTrace();
         }
 
+    }
+    private boolean isValidPassword(String password) {
+        if (password.length() < 8) return false;
+        boolean hasLetter = password.matches(".*[a-zA-Z].*");
+        boolean hasDigit = password.matches(".*\\d.*");
+        boolean hasSpecial = password.matches(".*[!@#$%^&*(),.?\":{}|<>].*");
+        return hasLetter && hasDigit && hasSpecial;
     }
 }

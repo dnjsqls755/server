@@ -1,6 +1,6 @@
 package service;
 
-import app.Application;
+import app.ServerApplication;
 import dao.ChatDao;
 import domain.ChatRoom;
 import domain.User;
@@ -13,6 +13,10 @@ import java.net.Socket;
 import java.util.List;
 import java.util.Optional;
 
+import dto.request.JoinRequest;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 public class ChatService {
 
     ChatDao chatDao;
@@ -20,7 +24,50 @@ public class ChatService {
     public ChatService(ChatDao chatDao) {
         this.chatDao = chatDao;
     }
+    //회원가입 처리 메서드
+    public boolean signupUser(JoinRequest req) {
+        try {
+            Connection conn = chatDao.getConnection(); // ChatDao에서 전달받은 DB 연결 사용
 
+            String sql = "INSERT INTO users (user_id, name, password, profile_img, status_msg, nickname, email, phone, address, detail_address, postal_code, gender, birth_date) " +
+                     "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+            PreparedStatement pstmt = conn.prepareStatement(sql);
+            pstmt.setString(1, req.getUserId());
+            pstmt.setString(2, req.getName());
+            pstmt.setString(3, req.getPassword());
+            pstmt.setString(4, req.getProfileImg());
+            pstmt.setString(5, req.getStatusMsg());
+            pstmt.setString(6, req.getNickname());
+            pstmt.setString(7, req.getEmail());
+            pstmt.setString(8, req.getPhone());
+            pstmt.setString(9, req.getAddress());
+            pstmt.setString(10, req.getDetailAddress());
+            pstmt.setString(11, req.getPostalCode());
+            pstmt.setString(12, req.getGender());
+            pstmt.setDate(13, java.sql.Date.valueOf(req.getBirthDate())); // "YYYY-MM-DD" 형식
+
+            pstmt.executeUpdate();
+            return true;
+        } catch (Exception e) {
+            e.printStackTrace();
+            return false;
+        }
+    }
+    public boolean isUserIdDuplicate(String userId) {
+        try {
+            Connection conn = chatDao.getConnection();
+            String sql = "SELECT COUNT(*) FROM users WHERE user_id = ?";
+            PreparedStatement pstmt = conn.prepareStatement(sql);
+            pstmt.setString(1, userId);
+            ResultSet rs = pstmt.executeQuery();
+            if (rs.next()) {
+                return rs.getInt(1) > 0;
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return false;
+    }
     // 사용자 정보 추가
     public void addUser(User user) {
         chatDao.addUser(user);
@@ -142,7 +189,7 @@ public class ChatService {
         users.remove(findUser.get());
 
         // 소켓 닫기 및 소켓 리스트에서 제거
-        List<Socket> sockets = Application.sockets;
+        List<Socket> sockets = ServerApplication.sockets;
         Socket clientSocket = findUser.get().getSocket();
         clientSocket.close();
         sockets.remove(findUser.get().getSocket());
