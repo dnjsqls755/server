@@ -95,6 +95,19 @@ public class ServerThread extends Thread {
                 sendMessage(userListRes);
                 break;
                 
+            case ID_CHECK:
+                String userIdToCheck = message.trim();
+                boolean isDuplicate = chatService.isUserIdDuplicate(userIdToCheck);
+
+                PrintWriter idcheck = new PrintWriter(socket.getOutputStream());
+                if (isDuplicate) {
+                	idcheck.println("ID_DUPLICATE");
+                } else {
+                	idcheck.println("ID_OK");
+                }
+                idcheck.flush();
+                break; 
+                
             case SIGNUP:
                 JoinRequest joinReq = new JoinRequest(message);
 
