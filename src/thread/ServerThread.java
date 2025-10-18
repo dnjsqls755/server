@@ -106,19 +106,24 @@ public class ServerThread extends Thread {
                 	idcheck.println("ID_OK");
                 }
                 idcheck.flush();
-                break; 
+                break;
+                
+            case NICKNAME_CHECK:
+                String nicknameToCheck = message.trim();
+                boolean isDuplicateNickname = chatService.isNicknameDuplicate(nicknameToCheck);
+
+                PrintWriter nicknameWriter = new PrintWriter(socket.getOutputStream());
+                if (isDuplicateNickname) {
+                    nicknameWriter.println("NICKNAME_DUPLICATE");
+                } else {
+                    nicknameWriter.println("NICKNAME_OK");
+                }
+                nicknameWriter.flush();
+                break;  
                 
             case SIGNUP:
                 JoinRequest joinReq = new JoinRequest(message);
-
-                // 아이디 중복 확인
-                if (chatService.isUserIdDuplicate(joinReq.getUserId())) {
-                    PrintWriter writer = new PrintWriter(socket.getOutputStream());
-                    writer.println("SIGNUP_DUPLICATE_ID");
-                    writer.flush();
-                    break;
-                }
-
+               
                 // 비밀번호 유효성 검사
                 if (!isValidPassword(joinReq.getPassword())) {
                     PrintWriter writer = new PrintWriter(socket.getOutputStream());
@@ -275,6 +280,7 @@ public class ServerThread extends Thread {
         }
 
     }
+    //비밀번호 유효성 규칙
     private boolean isValidPassword(String password) {
         if (password.length() < 8) return false;
         boolean hasLetter = password.matches(".*[a-zA-Z].*");

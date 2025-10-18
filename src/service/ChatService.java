@@ -53,12 +53,29 @@ public class ChatService {
             return false;
         }
     }
+    //아이디 중복확인 메서드
     public boolean isUserIdDuplicate(String userId) {
         try {
             Connection conn = chatDao.getConnection();
             String sql = "SELECT COUNT(*) FROM users WHERE user_id = ?";
             PreparedStatement pstmt = conn.prepareStatement(sql);
             pstmt.setString(1, userId);
+            ResultSet rs = pstmt.executeQuery();
+            if (rs.next()) {
+                return rs.getInt(1) > 0;
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return false;
+    }
+    //닉네임 중복처리 메서드
+    public boolean isNicknameDuplicate(String nickname) {
+        try {
+            Connection conn = chatDao.getConnection();
+            String sql = "SELECT COUNT(*) FROM users WHERE nickname = ?";
+            PreparedStatement pstmt = conn.prepareStatement(sql);
+            pstmt.setString(1, nickname);
             ResultSet rs = pstmt.executeQuery();
             if (rs.next()) {
                 return rs.getInt(1) > 0;
