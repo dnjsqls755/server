@@ -20,6 +20,9 @@ import java.io.PrintWriter;
 import java.net.Socket;
 import java.util.List;
 
+import java.io.DataInputStream;
+import java.io.FileOutputStream;
+import java.io.File;
 public class ServerThread extends Thread {
 
     Socket socket; // 담당자 (not 문지기)
@@ -123,7 +126,7 @@ public class ServerThread extends Thread {
                 
             case SIGNUP:
                 JoinRequest joinReq = new JoinRequest(message);
-               
+
                 // 비밀번호 유효성 검사
                 if (!isValidPassword(joinReq.getPassword())) {
                     PrintWriter writer = new PrintWriter(socket.getOutputStream());
@@ -135,18 +138,31 @@ public class ServerThread extends Thread {
                 // 회원가입 처리
                 boolean success = chatService.signupUser(joinReq);
                 PrintWriter writer = new PrintWriter(socket.getOutputStream());
+
                 if (success) {
+                    // 이미지 수신 및 저장
+                    try {
+                        DataInputStream dis = new DataInputStream(socket.getInputStream());
+                        int length = dis.readInt();
+                        byte[] imageBytes = new byte[length];
+                        dis.readFully(imageBytes);
+
+                        File dir = new File("profile_images");
+                        if (!dir.exists()) dir.mkdirs(); // 폴더 없으면 생성
+
+                        FileOutputStream fos = new FileOutputStream("profile_images/" + joinReq.getUserId() + ".jpg");
+                        fos.write(imageBytes);
+                        fos.close();
+                    } catch (IOException ex) {
+                        ex.printStackTrace();
+                        System.out.println("이미지 저장 실패: " + ex.getMessage());
+                    }
+
                     writer.println("SIGNUP_SUCCESS");
                 } else {
                     writer.println("SIGNUP_FAIL");
                 }
                 writer.flush();
-                break;
-                
-            case MESSAGE:
-                // [to 채팅방에 있는 다른 사용자] 메시지 전송
-                MessageResponse messageResponse = new MessageResponse(message);
-                sendMessage(messageResponse);
                 break;
 
             case CREATE_CHAT:
