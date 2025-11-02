@@ -150,7 +150,7 @@ public class ServerThread extends Thread {
                         File dir = new File("profile_images");
                         if (!dir.exists()) dir.mkdirs(); // 폴더 없으면 생성
 
-                        FileOutputStream fos = new FileOutputStream("profile_images/" + joinReq.getUserId() + ".jpg");
+                        FileOutputStream fos = new FileOutputStream("profile_images/" + joinReq.getUserId() + ".png");
                         fos.write(imageBytes);
                         fos.close();
                     } catch (IOException ex) {
