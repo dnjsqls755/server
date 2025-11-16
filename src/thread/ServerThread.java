@@ -76,20 +76,32 @@ public class ServerThread extends Thread {
             throws UserNotFoundException, ChatRoomNotFoundException, ChatRoomExistException, IOException {
         switch (type) {
 
-case LOGIN:
+        case LOGIN:
             LoginRequest loginReq = new LoginRequest(message);
-            boolean isValid = chatService.isValidLogin(loginReq.getId(), loginReq.getPw());
 
+            // 1. 기존 로그인 검증 유지
+            boolean isValid = chatService.isValidLogin(loginReq.getId(), loginReq.getPw());
             if (!isValid) {
                 sendResponse("LOGIN_FAIL");
                 return;
             }
 
-            User user = new User(socket, loginReq);
+            // 2. 닉네임 포함 User 객체 가져오기
+            User user = chatService.getUserByLogin(loginReq.getId(), loginReq.getPw());
+            if (user == null) {
+                sendResponse("LOGIN_FAIL");
+                return;
+            }
+
+            // 3. 소켓 연결 정보 설정
+            user.setSocket(socket);
+
+            // 4. 서버 메모리에 추가 및 로비 입장
             chatService.addUser(user);
             chatService.enterLobby(user);
 
-            sendMessage(new MessageResponse(MessageType.ENTER, ChatDao.LOBBY_CHAT_NAME, user.getName(), user.getEnterString()));
+            // 5. 클라이언트에게 초기 데이터 전송
+            sendMessage(new MessageResponse(MessageType.ENTER, ChatDao.LOBBY_CHAT_NAME, user.getNickName(), user.getEnterString()));
             sendMessage(new InitDataResponse(chatService.getChatRooms(), chatService.getUsers()));
             sendMessage(new UserListResponse(ChatDao.LOBBY_CHAT_NAME, chatService.getUsers()));
             break;
@@ -165,7 +177,7 @@ case LOGIN:
 
                 // [to 채팅방에 있는 다른 사용자] 입장 메시지 전송
                 User enterUser = chatService.getUser(userId);
-                MessageResponse enterChatRoomEnterMessageRes = new MessageResponse(MessageType.ENTER, enterChatRoomName, enterUser.getName(), enterUser.getEnterString());
+                MessageResponse enterChatRoomEnterMessageRes = new MessageResponse(MessageType.ENTER, enterChatRoomName, enterUser.getNickName(), enterUser.getEnterString());
                 sendMessage(enterChatRoomEnterMessageRes);
 
                 // [to 채팅방에 있는 모든 사용자 (나 자신 포함)] 사용자 리스트 전송
@@ -181,7 +193,7 @@ case LOGIN:
 
                 if (exitChatRoom.ieExistUser()) {
                     // [to 채팅방에 있는 다른 사용자] 퇴장 메시지 전송
-                    MessageResponse chatRoomExitMessageRes = new MessageResponse(MessageType.EXIT, exitChatReq.getChatRoomName(), exitUser.getName(), exitUser.getExitString());
+                    MessageResponse chatRoomExitMessageRes = new MessageResponse(MessageType.EXIT, exitChatReq.getChatRoomName(), exitUser.getNickName(), exitUser.getExitString());
                     sendMessage(chatRoomExitMessageRes);
 
                     // [to 채팅방에 있는 모든 사용자 (나 자신 포함)] 사용자 리스트 전송

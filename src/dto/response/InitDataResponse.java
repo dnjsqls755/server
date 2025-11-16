@@ -35,7 +35,7 @@ public class InitDataResponse extends DTO {
 
 
         for (User user : users) {
-            str += user.getId() + "," + user.getName() + "|";
+            str += user.getId() + "," + user.getNickName() + "|";
         }
         str = str.substring(0, str.length()-1);
 

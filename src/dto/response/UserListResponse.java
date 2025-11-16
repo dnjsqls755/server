@@ -23,7 +23,7 @@ public class UserListResponse extends DTO {
         String str = super.toString();
         str += chatRoomName + "|";
         for (User user : users) {
-            str += user.getId() + "," + user.getName() + "|";
+            str += user.getId() + "," + user.getNickName() + "|";
 
         }
 

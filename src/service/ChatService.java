@@ -102,6 +102,26 @@ public class ChatService {
         }
         return false;
     }
+    //로그인시 사용자 정보 가져오는 메서드
+    public User getUserByLogin(String userId, String password) {
+        try {
+            Connection conn = chatDao.getConnection();
+            String sql = "SELECT user_id, nickname FROM users WHERE user_id = ? AND password = ?";
+            PreparedStatement pstmt = conn.prepareStatement(sql);
+            pstmt.setString(1, userId);
+            pstmt.setString(2, password);
+            ResultSet rs = pstmt.executeQuery();
+
+            if (rs.next()) {
+                String id = rs.getString("user_id");
+                String nickname = rs.getString("nickname");
+                return new User(id, nickname); // 서버에서 User 객체 생성
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return null;
+    }
  // 이미지 경로 업데이트 메서드 추가
     public void updateUserProfileImage(String userId, String imagePath) {
         try {
