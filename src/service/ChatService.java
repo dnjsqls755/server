@@ -85,6 +85,23 @@ public class ChatService {
         }
         return false;
     }
+    //로그인검증 메서드
+    public boolean isValidLogin(String userId, String password) {
+        try {
+            Connection conn = chatDao.getConnection();
+            String sql = "SELECT COUNT(*) FROM users WHERE user_id = ? AND password = ?";
+            PreparedStatement pstmt = conn.prepareStatement(sql);
+            pstmt.setString(1, userId);
+            pstmt.setString(2, password);
+            ResultSet rs = pstmt.executeQuery();
+            if (rs.next()) {
+                return rs.getInt(1) > 0;
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return false;
+    }
  // 이미지 경로 업데이트 메서드 추가
     public void updateUserProfileImage(String userId, String imagePath) {
         try {

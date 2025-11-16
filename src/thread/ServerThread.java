@@ -75,103 +75,71 @@ public class ServerThread extends Thread {
     private void processReceiveMessage(DtoType type, String message)
             throws UserNotFoundException, ChatRoomNotFoundException, ChatRoomExistException, IOException {
         switch (type) {
-            case LOGIN:
-                // 사용자 추가
-                LoginRequest loginReq = new LoginRequest(message);
-                User user = new User(socket, loginReq);
-                chatService.addUser(user);
-                chatService.enterLobby(user); // 처음 채팅방에 들어가면 로비로
 
-                // [to 채팅방에 있는 다른 사용자] 입장 메시지 전송
-                MessageResponse lobbyEnterMessageRes = new MessageResponse(MessageType.ENTER, ChatDao.LOBBY_CHAT_NAME, user.getName(), user.getEnterString());
-                sendMessage(lobbyEnterMessageRes);
+case LOGIN:
+            LoginRequest loginReq = new LoginRequest(message);
+            boolean isValid = chatService.isValidLogin(loginReq.getId(), loginReq.getPw());
 
+            if (!isValid) {
+                sendResponse("LOGIN_FAIL");
+                return;
+            }
 
-                // [to 로그인 사용자] 초기 데이터 전송 (전체 사용자 리스트, 채팅방 리스트)
-                List<ChatRoom> chatRooms = chatService.getChatRooms();
-                List<User> users = chatService.getUsers();
+            User user = new User(socket, loginReq);
+            chatService.addUser(user);
+            chatService.enterLobby(user);
 
-                InitDataResponse initRes = new InitDataResponse(chatRooms, users);
-                sendMessage(initRes);
+            sendMessage(new MessageResponse(MessageType.ENTER, ChatDao.LOBBY_CHAT_NAME, user.getName(), user.getEnterString()));
+            sendMessage(new InitDataResponse(chatService.getChatRooms(), chatService.getUsers()));
+            sendMessage(new UserListResponse(ChatDao.LOBBY_CHAT_NAME, chatService.getUsers()));
+            break;
 
-                // [to 채팅방에 있는 다른 사용자] 사용자 리스트 전송
-                UserListResponse userListRes = new UserListResponse(ChatDao.LOBBY_CHAT_NAME, chatService.getUsers());
-                sendMessage(userListRes);
+        case ID_CHECK:
+            boolean isDuplicate = chatService.isUserIdDuplicate(message.trim());
+            sendResponse(isDuplicate ? "ID_DUPLICATE" : "ID_OK");
+            break;
+
+        case NICKNAME_CHECK:
+            boolean isDuplicateNickname = chatService.isNicknameDuplicate(message.trim());
+            sendResponse(isDuplicateNickname ? "NICKNAME_DUPLICATE" : "NICKNAME_OK");
+            break;
+
+        case SIGNUP:
+            JoinRequest joinReq = new JoinRequest(message);
+            if (!isValidPassword(joinReq.getPassword())) {
+                sendResponse("SIGNUP_INVALID_PASSWORD");
                 break;
-                
-            case ID_CHECK:
-                String userIdToCheck = message.trim();
-                boolean isDuplicate = chatService.isUserIdDuplicate(userIdToCheck);
+            }
 
-                PrintWriter idcheck = new PrintWriter(socket.getOutputStream());
-                if (isDuplicate) {
-                	idcheck.println("ID_DUPLICATE");
-                } else {
-                	idcheck.println("ID_OK");
-                }
-                idcheck.flush();
-                break;
-                
-            case NICKNAME_CHECK:
-                String nicknameToCheck = message.trim();
-                boolean isDuplicateNickname = chatService.isNicknameDuplicate(nicknameToCheck);
+            boolean success = chatService.signupUser(joinReq);
+            if (success) {
+                try {
+                    DataInputStream dis = new DataInputStream(socket.getInputStream());
+                    int length = dis.readInt();
+                    byte[] imageBytes = new byte[length];
+                    dis.readFully(imageBytes);
 
-                PrintWriter nicknameWriter = new PrintWriter(socket.getOutputStream());
-                if (isDuplicateNickname) {
-                    nicknameWriter.println("NICKNAME_DUPLICATE");
-                } else {
-                    nicknameWriter.println("NICKNAME_OK");
-                }
-                nicknameWriter.flush();
-                break;  
-                
-            case SIGNUP:
-                JoinRequest joinReq = new JoinRequest(message);
+                    File dir = new File("profile_images");
+                    if (!dir.exists()) dir.mkdirs();
 
-                // 비밀번호 유효성 검사
-                if (!isValidPassword(joinReq.getPassword())) {
-                    PrintWriter writer = new PrintWriter(socket.getOutputStream());
-                    writer.println("SIGNUP_INVALID_PASSWORD");
-                    writer.flush();
-                    break;
-                }
-
-                // 회원가입 처리
-                boolean success = chatService.signupUser(joinReq);
-                PrintWriter writer = new PrintWriter(socket.getOutputStream());
-
-                if (success) {
-                    try {
-                        DataInputStream dis = new DataInputStream(socket.getInputStream());
-                        int length = dis.readInt();
-                        byte[] imageBytes = new byte[length];
-                        dis.readFully(imageBytes);
-
-                        File dir = new File("profile_images");
-                        if (!dir.exists()) dir.mkdirs();
-
-                        // 파일명 충돌 방지
-                        String fileName = UUID.randomUUID() + ".jpg";
-                        File file = new File(dir, fileName);
-                        try (FileOutputStream fos = new FileOutputStream(file)) {
-                            fos.write(imageBytes);
-                        }
-
-                        // DB에 경로 저장
-                        String imagePath = "profile_images/" + fileName;
-                        chatService.updateUserProfileImage(joinReq.getUserId(), imagePath);
-
-                    } catch (IOException ex) {
-                        ex.printStackTrace();
-                        System.out.println("이미지 저장 실패: " + ex.getMessage());
+                    String fileName = UUID.randomUUID() + ".jpg";
+                    File file = new File(dir, fileName);
+                    try (FileOutputStream fos = new FileOutputStream(file)) {
+                        fos.write(imageBytes);
                     }
 
-                    writer.println("SIGNUP_SUCCESS");
-                } else {
-                    writer.println("SIGNUP_FAIL");
+                    String imagePath = "profile_images/" + fileName;
+                    chatService.updateUserProfileImage(joinReq.getUserId(), imagePath);
+                } catch (IOException ex) {
+                    ex.printStackTrace();
+                    System.out.println("이미지 저장 실패: " + ex.getMessage());
                 }
-                writer.flush();
-                break;
+                sendResponse("SIGNUP_SUCCESS");
+            } else {
+                sendResponse("SIGNUP_FAIL");
+            }
+            break;
+
 
             case CREATE_CHAT:
                 CreateChatRoomRequest createChatRoomReq = new CreateChatRoomRequest(message);
@@ -231,6 +199,12 @@ public class ServerThread extends Thread {
                 break;
         }
     }
+
+private void sendResponse(String message) throws IOException {
+    PrintWriter writer = new PrintWriter(socket.getOutputStream());
+    writer.println(message);
+    writer.flush();
+}
 
     private void sendMessage(DTO dto) {
         DtoType type = dto.getType();
