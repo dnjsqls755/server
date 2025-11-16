@@ -12,6 +12,7 @@ import exception.ChatRoomExistException;
 import exception.ChatRoomNotFoundException;
 import exception.UserNotFoundException;
 import service.ChatService;
+import java.util.UUID;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -140,7 +141,6 @@ public class ServerThread extends Thread {
                 PrintWriter writer = new PrintWriter(socket.getOutputStream());
 
                 if (success) {
-                    // 이미지 수신 및 저장
                     try {
                         DataInputStream dis = new DataInputStream(socket.getInputStream());
                         int length = dis.readInt();
@@ -148,11 +148,19 @@ public class ServerThread extends Thread {
                         dis.readFully(imageBytes);
 
                         File dir = new File("profile_images");
-                        if (!dir.exists()) dir.mkdirs(); // 폴더 없으면 생성
+                        if (!dir.exists()) dir.mkdirs();
 
-                        FileOutputStream fos = new FileOutputStream("profile_images/" + joinReq.getUserId() + ".png");
-                        fos.write(imageBytes);
-                        fos.close();
+                        // 파일명 충돌 방지
+                        String fileName = UUID.randomUUID() + ".jpg";
+                        File file = new File(dir, fileName);
+                        try (FileOutputStream fos = new FileOutputStream(file)) {
+                            fos.write(imageBytes);
+                        }
+
+                        // DB에 경로 저장
+                        String imagePath = "profile_images/" + fileName;
+                        chatService.updateUserProfileImage(joinReq.getUserId(), imagePath);
+
                     } catch (IOException ex) {
                         ex.printStackTrace();
                         System.out.println("이미지 저장 실패: " + ex.getMessage());

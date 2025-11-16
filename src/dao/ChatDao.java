@@ -25,6 +25,7 @@ public class ChatDao {
         // 로비 채팅방 기본 생성
         lobby = new ChatRoom(LOBBY_CHAT_NAME);
     }
+    
 
     public void addUser(User user) {
         users.add(user);

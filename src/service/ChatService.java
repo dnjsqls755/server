@@ -85,6 +85,20 @@ public class ChatService {
         }
         return false;
     }
+ // 이미지 경로 업데이트 메서드 추가
+    public void updateUserProfileImage(String userId, String imagePath) {
+        try {
+            Connection conn = chatDao.getConnection();
+            String sql = "UPDATE users SET profile_img = ? WHERE user_id = ?";
+            PreparedStatement pstmt = conn.prepareStatement(sql);
+            pstmt.setString(1, imagePath);
+            pstmt.setString(2, userId);
+            pstmt.executeUpdate();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+    
     // 사용자 정보 추가
     public void addUser(User user) {
         chatDao.addUser(user);

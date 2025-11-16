@@ -8,7 +8,9 @@ import java.util.Date;
 public class User {
 
     private Socket socket; // 현재 입장한 채팅방의 소켓
-
+    
+    private String pw;//비밀번호
+    
     private String id; // 아이디: 사용자 식별자
 
     private String name; // 이름: 채팅방에서 사용되는 이름
@@ -18,7 +20,7 @@ public class User {
     public User(Socket socket, LoginRequest req) {
         this.socket = socket;
         this.id = req.getId();
-        this.name = req.getName();
+        this.pw = req.getPw();
 
         this.createdAt = new Date();
     }
@@ -26,7 +28,9 @@ public class User {
     public String getId() {
         return id;
     }
-
+    public String getPw() {
+    	return pw;
+    }
     public String getName() {
         return name;
     }
