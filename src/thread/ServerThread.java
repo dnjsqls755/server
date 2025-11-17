@@ -79,7 +79,7 @@ public class ServerThread extends Thread {
         case LOGIN:
             LoginRequest loginReq = new LoginRequest(message);
 
-            // 1. 기존 로그인 검증 유지
+            // 1.로그인 검증 
             boolean isValid = chatService.isValidLogin(loginReq.getId(), loginReq.getPw());
             if (!isValid) {
                 sendResponse("LOGIN_FAIL");
@@ -153,20 +153,25 @@ public class ServerThread extends Thread {
             break;
 
 
-            case CREATE_CHAT:
-                CreateChatRoomRequest createChatRoomReq = new CreateChatRoomRequest(message);
+        case CREATE_CHAT:
+            CreateChatRoomRequest createChatRoomReq = new CreateChatRoomRequest(message);
+            ChatRoom chatRoom = chatService.createChatRoom(
+                createChatRoomReq.getName(),
+                createChatRoomReq.getUserId()
+            );
+            chatService.enterChatRoom(chatRoom.getName(), createChatRoomReq.getUserId());
 
-                ChatRoom chatRoom = chatService.createChatRoom(createChatRoomReq.getName(), createChatRoomReq.getUserId());
-                chatService.enterChatRoom(chatRoom.getName(), createChatRoomReq.getUserId());
+            // 응답 DTO 생성
+            CreateChatRoomResponse createChatRoomRes = new CreateChatRoomResponse(chatRoom);
+            sendMessage(createChatRoomRes);
 
-                // 새로 생성된 방 정보 전송
-                CreateChatRoomResponse createChatRoomRes = new CreateChatRoomResponse(chatRoom);
-                sendMessage(createChatRoomRes);
-
-                // [to 채팅방에 있는 모든 사용자 (나 자신 포함)] 사용자 리스트 전송
-                UserListResponse chatRoomUserListRes = new UserListResponse(chatRoom.getName(), chatService.getChatRoomUsers(chatRoom.getName()));
-                sendMessage(chatRoomUserListRes);
-                break;
+            // 채팅방 사용자 리스트 전송
+            UserListResponse chatRoomUserListRes = new UserListResponse(
+                chatRoom.getName(),
+                chatService.getChatRoomUsers(chatRoom.getName())
+            );
+            sendMessage(chatRoomUserListRes);
+            break;
 
             case ENTER_CHAT:
                 // 서버에 채팅방에 들어온 사용자 설정

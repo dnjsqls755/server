@@ -8,6 +8,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
+import java.sql.PreparedStatement;
+import java.sql.SQLException;
+
 public class ChatDao {
 
     private List<User> users = new ArrayList<>(); // 접속 중인 모든 사용자 리스트
@@ -31,12 +34,20 @@ public class ChatDao {
         users.add(user);
         // TODO: DB에 사용자 정보 저장하는 코드 추가 가능
     }
-
+    //채팅방 생성 및 DB저장
     public void addChatRoom(ChatRoom chatRoom) {
         chatRooms.add(chatRoom);
-        // TODO: DB에 채팅방 정보 저장하는 코드 추가 가능
-    }
-
+        String sql = "INSERT INTO ChatRooms (room_id, room_name, creator_id) VALUES (chatroom_seq.NEXTVAL, ?, ?)";
+        try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
+            pstmt.setString(1, chatRoom.getName());
+            pstmt.setString(2, chatRoom.getCreatorId()); 
+            pstmt.executeUpdate();
+            System.out.println("채팅방 [" + chatRoom.getName() + "] DB 저장 완료");
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }              
+    
     public Optional<User> findUserById(String id) {
         return users.stream().filter(user -> user.getId().equals(id)).findAny();
         // TODO: DB에서 사용자 조회하는 코드로 변경 가능

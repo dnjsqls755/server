@@ -164,18 +164,17 @@ public class ChatService {
         findChatRoom.get().addUser(findUser.get());
     }
 
-    // 채팅방 생성
+ // 채팅방 생성
     public ChatRoom createChatRoom(String chatRoomName, String userId) throws ChatRoomExistException {
         Optional<ChatRoom> findChatRoom = chatDao.getChatRooms().stream()
                 .filter(chatRoom -> chatRoom.getName().equals(chatRoomName))
                 .findAny();
 
         if (findChatRoom.isEmpty()) {
-            ChatRoom chatRoom = new ChatRoom(chatRoomName);
-            chatDao.addChatRoom(chatRoom);
+            ChatRoom chatRoom = new ChatRoom(chatRoomName, userId); // creatorId 추가
+            chatDao.addChatRoom(chatRoom); // DB 저장 (creatorId 포함)
             return chatRoom;
-        }
-        else {
+        } else {
             throw new ChatRoomExistException(chatRoomName);
         }
     }
