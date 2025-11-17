@@ -53,11 +53,12 @@ public class ChatDao {
         // TODO: DB에서 사용자 조회하는 코드로 변경 가능
     }
     //로비제외 모든 채팅방 조회
-    public List<ChatRoom> findAllChatRooms() {
+    public List<ChatRoom> findAllChatRoomsExceptLobby() {
         List<ChatRoom> rooms = new ArrayList<>();
-        String sql = "SELECT room_name, creator_id FROM ChatRooms WHERE room_name <> 'Lobby'";
-        try (PreparedStatement pstmt = connection.prepareStatement(sql);
-             ResultSet rs = pstmt.executeQuery()) {
+        String sql = "SELECT room_name, creator_id FROM ChatRooms WHERE room_name != ?";
+        try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
+            pstmt.setString(1, ChatDao.LOBBY_CHAT_NAME);
+            ResultSet rs = pstmt.executeQuery();
             while (rs.next()) {
                 rooms.add(new ChatRoom(rs.getString("room_name"), rs.getString("creator_id")));
             }
