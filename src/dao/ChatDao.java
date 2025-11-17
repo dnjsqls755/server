@@ -10,7 +10,7 @@ import java.util.Optional;
 
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
-
+import java.sql.ResultSet;
 public class ChatDao {
 
     private List<User> users = new ArrayList<>(); // 접속 중인 모든 사용자 리스트
@@ -52,12 +52,35 @@ public class ChatDao {
         return users.stream().filter(user -> user.getId().equals(id)).findAny();
         // TODO: DB에서 사용자 조회하는 코드로 변경 가능
     }
-
+    //로비제외 모든 채팅방 조회
+    public List<ChatRoom> findAllChatRooms() {
+        List<ChatRoom> rooms = new ArrayList<>();
+        String sql = "SELECT room_name, creator_id FROM ChatRooms WHERE room_name <> 'Lobby'";
+        try (PreparedStatement pstmt = connection.prepareStatement(sql);
+             ResultSet rs = pstmt.executeQuery()) {
+            while (rs.next()) {
+                rooms.add(new ChatRoom(rs.getString("room_name"), rs.getString("creator_id")));
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return rooms;
+    }
+    //채팅방 이름으로 채팅방 조회
     public Optional<ChatRoom> findChatRoomByName(String name) {
-        return chatRooms.stream()
-                .filter(chatRoom -> chatRoom.getName().equals(name))
-                .findAny();
-        // TODO: DB에서 채팅방 조회하는 코드로 변경 가능
+        String sql = "SELECT room_name, creator_id FROM ChatRooms WHERE room_name = ?";
+        try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
+            pstmt.setString(1, name);
+            ResultSet rs = pstmt.executeQuery();
+            if (rs.next()) {
+                String roomName = rs.getString("room_name");
+                String creatorId = rs.getString("creator_id");
+                return Optional.of(new ChatRoom(roomName, creatorId));
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return Optional.empty();
     }
 
     public ChatRoom getLobby() {

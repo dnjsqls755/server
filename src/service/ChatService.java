@@ -178,7 +178,10 @@ public class ChatService {
             throw new ChatRoomExistException(chatRoomName);
         }
     }
-
+    public void initChatRooms() {
+        List<ChatRoom> dbRooms = chatDao.loadChatRoomsFromDB();
+        chatDao.getChatRooms().addAll(dbRooms);
+    }
     // 채팅방 나가기
     public User exitChatRoom(String chatRoomName, String userId) throws UserNotFoundException, ChatRoomNotFoundException {
         Optional<ChatRoom> chatRoom = chatDao.findChatRoomByName(chatRoomName);
