@@ -32,8 +32,14 @@ public class ChatDao {
 
     public void addUser(User user) {
         users.add(user);
-        // TODO: DB에 사용자 정보 저장하는 코드 추가 가능
     }
+    
+    public void removeUser(String userId) {
+        users.removeIf(user -> user.getId().equals(userId));
+    }
+    
+    // TODO: 아래 채팅방 관련 메서드들은 필요시 구현
+    
     //채팅방 생성 및 DB저장
     public void addChatRoom(ChatRoom chatRoom) {
         chatRooms.add(chatRoom);
@@ -127,6 +133,98 @@ public class ChatDao {
         } catch (SQLException e) {
             e.printStackTrace();
         }
+    }
+
+    // 채팅 메시지 내부 클래스
+    public static class ChatMessage {
+        private String nickname;
+        private String content;
+        private String sentAt;
+
+        public ChatMessage(String nickname, String content, String sentAt) {
+            this.nickname = nickname;
+            this.content = content;
+            this.sentAt = sentAt;
+        }
+
+        public String getNickname() { return nickname; }
+        public String getContent() { return content; }
+        public String getSentAt() { return sentAt; }
+    }
+
+    // 채팅방의 이전 메시지 불러오기
+    public List<ChatMessage> loadMessages(String roomName, int limit) {
+        List<ChatMessage> messages = new ArrayList<>();
+        String sql = "SELECT u.nickname, m.content, TO_CHAR(m.sent_at, 'HH24:MI') as sent_time " +
+                     "FROM Messages m " +
+                     "JOIN ChatRooms r ON m.room_id = r.room_id " +
+                     "JOIN users u ON m.sender_id = u.user_id " +
+                     "WHERE r.room_name = ? " +
+                     "ORDER BY m.sent_at DESC " +
+                     "FETCH FIRST ? ROWS ONLY";
+        
+        try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
+            pstmt.setString(1, roomName);
+            pstmt.setInt(2, limit);
+            ResultSet rs = pstmt.executeQuery();
+            
+            while (rs.next()) {
+                messages.add(0, new ChatMessage(
+                    rs.getString("nickname"),
+                    rs.getString("content"),
+                    rs.getString("sent_time")
+                ));
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        
+        return messages;
+    }
+
+    // 채팅방에 사용자 추가 (DB)
+    public void addUserToChatRoom(String roomName, String userId) {
+        String sql = "INSERT INTO ChatRoomUsers (room_id, user_id) " +
+                     "SELECT r.room_id, ? FROM ChatRooms r " +
+                     "WHERE r.room_name = ? " +
+                     "AND NOT EXISTS (SELECT 1 FROM ChatRoomUsers cu WHERE cu.room_id = r.room_id AND cu.user_id = ?)";
+        try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
+            pstmt.setString(1, userId);
+            pstmt.setString(2, roomName);
+            pstmt.setString(3, userId);
+            pstmt.executeUpdate();
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
+    // 채팅방에서 사용자 제거 (DB)
+    public void removeUserFromChatRoom(String roomName, String userId) {
+        String sql = "DELETE FROM ChatRoomUsers " +
+                     "WHERE room_id = (SELECT room_id FROM ChatRooms WHERE room_name = ?) " +
+                     "AND user_id = ?";
+        try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
+            pstmt.setString(1, roomName);
+            pstmt.setString(2, userId);
+            pstmt.executeUpdate();
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
+    // 닉네임으로 사용자 ID 찾기 (DB)
+    public String findUserIdByNickname(String nickname) {
+        String sql = "SELECT user_id FROM users WHERE nickname = ?";
+        try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
+            pstmt.setString(1, nickname);
+            ResultSet rs = pstmt.executeQuery();
+            if (rs.next()) {
+                return rs.getString("user_id");
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return null;
     }
 }
 

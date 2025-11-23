@@ -1,22 +1,16 @@
 package service;
 
-import app.ServerApplication;
 import dao.ChatDao;
 import domain.ChatRoom;
 import domain.User;
-import exception.ChatRoomExistException;
-import exception.ChatRoomNotFoundException;
-import exception.UserNotFoundException;
-
-import java.io.IOException;
-import java.net.Socket;
-import java.util.List;
-import java.util.Optional;
-
 import dto.request.JoinRequest;
+
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
+import java.util.ArrayList;
+import java.util.List;
+
 public class ChatService {
 
     ChatDao chatDao;
@@ -24,10 +18,11 @@ public class ChatService {
     public ChatService(ChatDao chatDao) {
         this.chatDao = chatDao;
     }
+
     //회원가입 처리 메서드
     public boolean signupUser(JoinRequest req) {
         try {
-            Connection conn = chatDao.getConnection(); // ChatDao에서 전달받은 DB 연결 사용
+            Connection conn = chatDao.getConnection();
 
             String sql = "INSERT INTO users (user_id, name, password, profile_img, status_msg, nickname, email, phone, address, detail_address, postal_code, gender, birth_date) " +
                      "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
@@ -44,7 +39,7 @@ public class ChatService {
             pstmt.setString(10, req.getDetailAddress());
             pstmt.setString(11, req.getPostalCode());
             pstmt.setString(12, req.getGender());
-            pstmt.setDate(13, java.sql.Date.valueOf(req.getBirthDate())); // "YYYY-MM-DD" 형식
+            pstmt.setDate(13, java.sql.Date.valueOf(req.getBirthDate()));
 
             pstmt.executeUpdate();
             return true;
@@ -53,6 +48,7 @@ public class ChatService {
             return false;
         }
     }
+
     //아이디 중복확인 메서드
     public boolean isUserIdDuplicate(String userId) {
         try {
@@ -69,6 +65,7 @@ public class ChatService {
         }
         return false;
     }
+
     //닉네임 중복처리 메서드
     public boolean isNicknameDuplicate(String nickname) {
         try {
@@ -85,7 +82,8 @@ public class ChatService {
         }
         return false;
     }
-    //로그인검증 메서드
+
+    //로그인 검증 메서드
     public boolean isValidLogin(String userId, String password) {
         try {
             Connection conn = chatDao.getConnection();
@@ -102,6 +100,7 @@ public class ChatService {
         }
         return false;
     }
+
     //로그인시 사용자 정보 가져오는 메서드
     public User getUserByLogin(String userId, String password) {
         try {
@@ -115,14 +114,15 @@ public class ChatService {
             if (rs.next()) {
                 String id = rs.getString("user_id");
                 String nickname = rs.getString("nickname");
-                return new User(id, nickname); // 서버에서 User 객체 생성
+                return new User(id, nickname);
             }
         } catch (Exception e) {
             e.printStackTrace();
         }
         return null;
     }
- // 이미지 경로 업데이트 메서드 추가
+
+    // 이미지 경로 업데이트 메서드
     public void updateUserProfileImage(String userId, String imagePath) {
         try {
             Connection conn = chatDao.getConnection();
@@ -140,137 +140,139 @@ public class ChatService {
     public void addUser(User user) {
         chatDao.addUser(user);
     }
-
-    public void enterLobby(User user) {
-        chatDao.getLobby().addUser(user);
+    
+    // 사용자 제거
+    public void removeUser(String userId) {
+        chatDao.removeUser(userId);
     }
 
-    // 채팅방 입장
-    public void enterChatRoom(String chatRoomName, String userId) throws UserNotFoundException, ChatRoomNotFoundException {
-        Optional<User> findUser = chatDao.findUserById(userId);
-        if (findUser.isEmpty()) {
-            throw new UserNotFoundException(userId);
-        }
-
-        List<ChatRoom> chatRooms = chatDao.getChatRooms();
-        Optional<ChatRoom> findChatRoom = chatRooms.stream()
-                .filter(chatRoom -> chatRoom.getName().equals(chatRoomName))
-                .findAny();
-
-        if (findChatRoom.isEmpty()) {
-            throw new ChatRoomNotFoundException(chatRoomName);
-        }
-
-        findChatRoom.get().addUser(findUser.get());
-    }
-
- // 채팅방 생성
-    public ChatRoom createChatRoom(String chatRoomName, String userId) throws ChatRoomExistException {
-        Optional<ChatRoom> findChatRoom = chatDao.getChatRooms().stream()
-                .filter(chatRoom -> chatRoom.getName().equals(chatRoomName))
-                .findAny();
-
-        if (findChatRoom.isEmpty()) {
-            ChatRoom chatRoom = new ChatRoom(chatRoomName, userId); // creatorId 추가
-            chatDao.addChatRoom(chatRoom); // DB 저장 (creatorId 포함)
-            return chatRoom;
-        } else {
-            throw new ChatRoomExistException(chatRoomName);
-        }
-    }
-    public void loadChatRoomsFromDb() {
-        chatDao.refreshChatRoomsFromDb();
-        System.out.println("로비 제외 채팅방 메모리 로드 완료: " + chatDao.getChatRooms().size() + "개");
-    }
-    // 채팅방 나가기
-    public User exitChatRoom(String chatRoomName, String userId) throws UserNotFoundException, ChatRoomNotFoundException {
-        Optional<ChatRoom> chatRoom = chatDao.findChatRoomByName(chatRoomName);
-        if (chatRoom.isEmpty()) {
-            throw new ChatRoomNotFoundException(chatRoomName);
-        }
-
-        Optional<User> findUser = chatRoom.get().getUsers().stream()
-                .filter(user -> user.getId().equals(userId))
-                .findAny();
-
-        if (findUser.isEmpty()) {
-            throw new UserNotFoundException(userId);
-        }
-
-        List<User> users = chatRoom.get().getUsers();
-        users.remove(findUser.get());
-
-        if (!chatRoom.get().ieExistUser()) {
-            chatDao.getChatRooms().remove(chatRoom.get());
-        }
-
-        return findUser.get();
-    }
-
+    // 접속 중인 사용자 목록 조회
     public List<User> getUsers() {
         return chatDao.getUsers();
     }
 
-    public List<ChatRoom> getChatRooms() { return chatDao.getChatRooms(); }
-
+    // 사용자 조회
     public User getUser(String userId) {
-        Optional<User> findUser = chatDao.findUserById(userId);
-        if (findUser.isEmpty()) {
-            System.out.println("[" + userId + "] 아이디의 사용자 없음");
+        return chatDao.getUser(userId).orElse(null);
+    }
+
+    // 채팅방 생성
+    public ChatRoom createChatRoom(String roomName, String creatorId) {
+        try {
+            // 이미 존재하는 채팅방인지 확인
+            if (chatDao.findChatRoomByName(roomName).isPresent()) {
+                System.out.println("[ERROR] 이미 존재하는 채팅방: " + roomName);
+                return null;
+            }
+            
+            ChatRoom newRoom = new ChatRoom(roomName, creatorId);
+            chatDao.addChatRoom(newRoom);
+            return newRoom;
+        } catch (Exception e) {
+            e.printStackTrace();
             return null;
         }
-        return findUser.get();
     }
 
-    public void saveChatMessage(String chatRoomName, String userNickname, String content) {
-        Optional<User> sender = chatDao.findUserByNickname(userNickname);
-        if (sender.isEmpty()) {
-            System.out.println("닉네임 [" + userNickname + "] 사용자를 찾을 수 없어 메시지를 저장하지 못했습니다.");
-            return;
+    // 채팅방 입장
+    public void enterChatRoom(String roomName, String userId) {
+        try {
+            User user = chatDao.getUser(userId).orElse(null);
+            if (user == null) {
+                System.out.println("[ERROR] 사용자를 찾을 수 없음: " + userId);
+                return;
+            }
+
+            ChatRoom room = chatDao.findChatRoomByName(roomName).orElse(null);
+            if (room == null) {
+                System.out.println("[ERROR] 채팅방을 찾을 수 없음: " + roomName);
+                return;
+            }
+
+            room.addUser(user);
+            
+            // DB에 채팅방-사용자 관계 저장
+            chatDao.addUserToChatRoom(roomName, userId);
+        } catch (Exception e) {
+            e.printStackTrace();
         }
-        chatDao.saveMessage(chatRoomName, sender.get().getId(), content);
     }
 
-    public ChatRoom getChatRoom(String chatRoomName) {
-        if (chatRoomName.equals(ChatDao.LOBBY_CHAT_NAME)) {
-            return chatDao.getLobby();
-        }
+    // 채팅방 퇴장
+    public User exitChatRoom(String roomName, String userId) {
+        try {
+            ChatRoom room = chatDao.findChatRoomByName(roomName).orElse(null);
+            if (room == null) {
+                System.out.println("[ERROR] 채팅방을 찾을 수 없음: " + roomName);
+                return null;
+            }
 
-        Optional<ChatRoom> findChatRoom = chatDao.findChatRoomByName(chatRoomName);
-        if (findChatRoom.isEmpty()) {
-            System.out.println("[" + chatRoomName + "] 이름의 채팅방 없음");
+            User user = room.getUsers().stream()
+                    .filter(u -> u.getId().equals(userId))
+                    .findFirst()
+                    .orElse(null);
+
+            if (user != null) {
+                room.getUsers().remove(user);
+                
+                // DB에서 채팅방-사용자 관계 삭제
+                chatDao.removeUserFromChatRoom(roomName, userId);
+            }
+
+            return user;
+        } catch (Exception e) {
+            e.printStackTrace();
             return null;
         }
-        return findChatRoom.get();
     }
 
-    public List<User> getChatRoomUsers(String chatRoomName) {
-        Optional<ChatRoom> findChatRoom = chatDao.findChatRoomByName(chatRoomName);
-        if (findChatRoom.isEmpty()) {
-            System.out.println("[" + chatRoomName + "] 이름의 채팅방 없음");
-            return null;
+    // 채팅방 조회
+    public ChatRoom getChatRoom(String roomName) {
+        return chatDao.findChatRoomByName(roomName).orElse(null);
+    }
+    
+    // 모든 채팅방 조회 (로비 제외)
+    public List<ChatRoom> getAllChatRooms() {
+        return chatDao.findAllChatRoomsExceptLobby();
+    }
+
+    // 채팅방 사용자 목록 조회
+    public List<User> getChatRoomUsers(String roomName) {
+        ChatRoom room = chatDao.findChatRoomByName(roomName).orElse(null);
+        if (room != null) {
+            return room.getUsers();
         }
-        return findChatRoom.get().getUsers();
+        return new ArrayList<>();
     }
 
-    public void disconnect(String userId) throws UserNotFoundException, IOException {
-        Optional<User> findUser = chatDao.getUser(userId);
-        if (findUser.isEmpty()) {
-            throw new UserNotFoundException(userId);
+    // 채팅 메시지 저장
+    public void saveChatMessage(String roomName, String userNickname, String content) {
+        try {
+            // 닉네임으로 사용자 찾기
+            User sender = chatDao.findUserByNickname(userNickname).orElse(null);
+            if (sender == null) {
+                // DB에서 사용자 찾기
+                String userId = chatDao.findUserIdByNickname(userNickname);
+                if (userId == null) {
+                    System.out.println("[ERROR] 사용자를 찾을 수 없음: " + userNickname);
+                    return;
+                }
+                chatDao.saveMessage(roomName, userId, content);
+            } else {
+                chatDao.saveMessage(roomName, sender.getId(), content);
+            }
+            System.out.println("[DB] 메시지 저장 완료 - 방: " + roomName + ", 발신자: " + userNickname);
+        } catch (Exception e) {
+            e.printStackTrace();
         }
-
-        // 사용자가 입장해있는 채팅방에서 사용자 삭제
-        List<ChatRoom> chatRooms = chatDao.getChatRooms();
-        chatRooms.forEach(chatRoom -> chatRoom.removeUser(findUser.get())); // TODO 스트림 람다식 수정
-
-        // 전체 사용자 리스트에서 제거
-        List<User> users = chatDao.getUsers();
-        users.remove(findUser.get());
-
-        // 소켓 닫기 및 소켓 리스트에서 제거
-        List<Socket> sockets = ServerApplication.sockets;
-        Socket clientSocket = findUser.get().getSocket();
-        clientSocket.close();
-        sockets.remove(findUser.get().getSocket());
     }
+
+    // 이전 메시지 불러오기
+    public List<ChatDao.ChatMessage> loadChatMessages(String roomName) {
+        return chatDao.loadMessages(roomName, 100);
+    }
+
+    // TODO: 추가 기능 구현 예정
 }
+
+

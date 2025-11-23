@@ -19,11 +19,16 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.net.Socket;
+import java.util.ArrayList;
 import java.util.List;
 
 import java.io.DataInputStream;
 import java.io.FileOutputStream;
 import java.io.File;
+import java.awt.Image;
+import java.awt.image.BufferedImage;
+import javax.imageio.ImageIO;
+
 public class ServerThread extends Thread {
 
     Socket socket; // 담당자 (not 문지기)
@@ -40,8 +45,9 @@ public class ServerThread extends Thread {
         super.run();
 
         try {
+            BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+            
             while (true) {
-                BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
                 String str = reader.readLine();
                 if (str == null) {
                     System.out.println("socket error (can't get socket input stream) - client socket closed");
@@ -56,6 +62,12 @@ public class ServerThread extends Thread {
                     } catch (Exception e) {
                         System.out.println(e.getMessage());
                     }
+                }
+
+                // HTTP 요청 처리
+                if (str.startsWith("POST /address")) {
+                    handleHttpAddressRequest(reader);
+                    continue;
                 }
 
                 String[] token = str.split(":");
@@ -79,64 +91,67 @@ public class ServerThread extends Thread {
         case LOGIN:
             LoginRequest loginReq = new LoginRequest(message);
 
-            // 1.로그인 검증 
+            // 로그인 검증
             boolean isValid = chatService.isValidLogin(loginReq.getId(), loginReq.getPw());
             if (!isValid) {
                 sendResponse("LOGIN_FAIL");
                 return;
             }
 
-            // 2. 닉네임 포함 User 객체 가져오기
+            // 닉네임 포함 User 객체 가져오기
             User user = chatService.getUserByLogin(loginReq.getId(), loginReq.getPw());
             if (user == null) {
                 sendResponse("LOGIN_FAIL");
                 return;
             }
 
-            // 3. 소켓 연결 정보 설정
+            // 소켓 연결 정보 설정
             user.setSocket(socket);
 
-            // 4. 서버 메모리에 추가 및 로비 입장
+            // 서버 메모리에 사용자 추가
             chatService.addUser(user);
-            chatService.enterLobby(user);
 
-            // 4-1. 로그인 시점에 DB에 저장된 채팅방 최신화
-            chatService.loadChatRoomsFromDb();
-
-            // 5. 클라이언트에게 초기 데이터 전송
-            sendMessage(new MessageResponse(MessageType.ENTER, ChatDao.LOBBY_CHAT_NAME, user.getNickName(), user.getEnterString()));
-            sendMessage(new InitDataResponse(chatService.getChatRooms(), chatService.getUsers()));
-            sendMessage(new UserListResponse(ChatDao.LOBBY_CHAT_NAME, chatService.getUsers()));
+            // DB에서 채팅방 목록 불러오기
+            List<ChatRoom> dbChatRooms = chatService.getAllChatRooms();
+            
+            // 클라이언트에게 로그인 성공 응답 전송 (채팅방 목록 포함)
+            sendMessage(new InitDataResponse(dbChatRooms, chatService.getUsers()));
+            
+            // 모든 클라이언트에게 업데이트된 사용자 목록 전송
+            UserListResponse lobbyUserList = new UserListResponse("Lobby", chatService.getUsers());
+            broadcastToAll(lobbyUserList);
+            
+            System.out.println("[LOGIN] 사용자 로그인 완료: " + user.getId() + " (" + user.getNickName() + ")");
             break;
-
-        case MESSAGE:
-            MessageResponse chatMessage = new MessageResponse(message);
-
-            if (chatMessage.getMessageType() == MessageType.CHAT) {
-                chatService.saveChatMessage(
-                        chatMessage.getChatRoomName(),
-                        chatMessage.getUserName(),
-                        chatMessage.getMessage()
-                );
-            }
-
-            sendMessage(chatMessage);
+            
+        case LOGOUT:
+            LogoutRequest logoutReq = new LogoutRequest(message);
+            System.out.println("[LOGOUT] 로그아웃 요청 - 사용자: " + logoutReq.getUserId());
+            
+            // 사용자 제거
+            chatService.removeUser(logoutReq.getUserId());
+            
+            // 모든 클라이언트에게 업데이트된 사용자 목록 전송
+            UserListResponse updatedUserList = new UserListResponse("Lobby", chatService.getUsers());
+            broadcastToAll(updatedUserList);
+            
+            System.out.println("[LOGOUT] 로그아웃 완료");
             break;
 
         case ID_CHECK:
             boolean isDuplicate = chatService.isUserIdDuplicate(message.trim());
-            sendResponse(isDuplicate ? "ID_DUPLICATE" : "ID_OK");
+            sendDtoResponse(isDuplicate ? DtoType.ID_DUPLICATE : DtoType.ID_OK);
             break;
 
         case NICKNAME_CHECK:
             boolean isDuplicateNickname = chatService.isNicknameDuplicate(message.trim());
-            sendResponse(isDuplicateNickname ? "NICKNAME_DUPLICATE" : "NICKNAME_OK");
+            sendDtoResponse(isDuplicateNickname ? DtoType.NICKNAME_DUPLICATE : DtoType.NICKNAME_OK);
             break;
 
         case SIGNUP:
             JoinRequest joinReq = new JoinRequest(message);
             if (!isValidPassword(joinReq.getPassword())) {
-                sendResponse("SIGNUP_INVALID_PASSWORD");
+                sendDtoResponse(DtoType.SIGNUP_INVALID_PASSWORD);
                 break;
             }
 
@@ -148,89 +163,160 @@ public class ServerThread extends Thread {
                     byte[] imageBytes = new byte[length];
                     dis.readFully(imageBytes);
 
+                    // 이미지 리사이징 (200x200)
                     File dir = new File("profile_images");
                     if (!dir.exists()) dir.mkdirs();
 
                     String fileName = UUID.randomUUID() + ".jpg";
                     File file = new File(dir, fileName);
-                    try (FileOutputStream fos = new FileOutputStream(file)) {
-                        fos.write(imageBytes);
-                    }
+                    
+                    // 원본 이미지를 BufferedImage로 변환
+                    BufferedImage originalImage = ImageIO.read(new java.io.ByteArrayInputStream(imageBytes));
+                    
+                    // 200x200으로 리사이징
+                    Image scaledImage = originalImage.getScaledInstance(200, 200, Image.SCALE_SMOOTH);
+                    BufferedImage resizedImage = new BufferedImage(200, 200, BufferedImage.TYPE_INT_RGB);
+                    resizedImage.getGraphics().drawImage(scaledImage, 0, 0, null);
+                    
+                    // 리사이징된 이미지 저장
+                    ImageIO.write(resizedImage, "jpg", file);
 
                     String imagePath = "profile_images/" + fileName;
                     chatService.updateUserProfileImage(joinReq.getUserId(), imagePath);
+                    
+                    System.out.println("[SIGNUP] 프로필 이미지 리사이징 완료: " + imagePath);
                 } catch (IOException ex) {
                     ex.printStackTrace();
                     System.out.println("이미지 저장 실패: " + ex.getMessage());
                 }
-                sendResponse("SIGNUP_SUCCESS");
+                sendDtoResponse(DtoType.SIGNUP_SUCCESS);
             } else {
-                sendResponse("SIGNUP_FAIL");
+                sendDtoResponse(DtoType.SIGNUP_FAIL);
             }
             break;
 
-
         case CREATE_CHAT:
-            CreateChatRoomRequest createChatRoomReq = new CreateChatRoomRequest(message);
-            ChatRoom chatRoom = chatService.createChatRoom(
-                createChatRoomReq.getName(),
-                createChatRoomReq.getUserId()
-            );
-            chatService.enterChatRoom(chatRoom.getName(), createChatRoomReq.getUserId());
-
-            // 응답 DTO 생성
-            CreateChatRoomResponse createChatRoomRes = new CreateChatRoomResponse(chatRoom);
-            sendMessage(createChatRoomRes);
-
-            // 채팅방 사용자 리스트 전송
-            UserListResponse chatRoomUserListRes = new UserListResponse(
-                chatRoom.getName(),
-                chatService.getChatRoomUsers(chatRoom.getName())
-            );
-            sendMessage(chatRoomUserListRes);
+            // 채팅방 생성
+            CreateChatRoomRequest createReq = new CreateChatRoomRequest(message);
+            System.out.println("[CREATE_CHAT] 채팅방 생성 요청 - 이름: " + createReq.getName() + ", 생성자: " + createReq.getUserId());
+            
+            ChatRoom newRoom = chatService.createChatRoom(createReq.getName(), createReq.getUserId());
+            if (newRoom != null) {
+                // 생성자를 채팅방에 입장시킴
+                chatService.enterChatRoom(newRoom.getName(), createReq.getUserId());
+                
+                // 모든 클라이언트에게 새 채팅방 알림
+                CreateChatRoomResponse createRes = new CreateChatRoomResponse(newRoom);
+                broadcastToAll(createRes);
+                
+                // 생성자에게 사용자 목록 전송
+                List<User> roomUsers = chatService.getChatRoomUsers(newRoom.getName());
+                UserListResponse userListRes = new UserListResponse(newRoom.getName(), roomUsers);
+                sendMessage(userListRes);
+                
+                System.out.println("[CREATE_CHAT] 채팅방 생성 완료: " + newRoom.getName());
+            }
             break;
 
-            case ENTER_CHAT:
-                // 서버에 채팅방에 들어온 사용자 설정
-                EnterChatRequest enterChatReq = new EnterChatRequest(message);
-                String enterChatRoomName = enterChatReq.getChatRoomName();
-                String userId = enterChatReq.getUserId();
-                chatService.enterChatRoom(enterChatRoomName, userId);
-
-                // [to 채팅방에 있는 다른 사용자] 입장 메시지 전송
-                User enterUser = chatService.getUser(userId);
-                MessageResponse enterChatRoomEnterMessageRes = new MessageResponse(MessageType.ENTER, enterChatRoomName, enterUser.getNickName(), enterUser.getEnterString());
-                sendMessage(enterChatRoomEnterMessageRes);
-
-                // [to 채팅방에 있는 모든 사용자 (나 자신 포함)] 사용자 리스트 전송
-                UserListResponse enterChatRoomUserListRes = new UserListResponse(enterChatRoomName, chatService.getChatRoomUsers(enterChatRoomName));
-                sendMessage(enterChatRoomUserListRes);
-
-                break;
-            case EXIT_CHAT:
-                ExitChatRequest exitChatReq = new ExitChatRequest(message);
-                ChatRoom exitChatRoom = chatService.getChatRoom(exitChatReq.getChatRoomName());
-                String exitChatRoomName = exitChatRoom.getName();
-                User exitUser = chatService.exitChatRoom(exitChatReq.getChatRoomName(), exitChatReq.getUserId());
-
-                if (exitChatRoom.ieExistUser()) {
-                    // [to 채팅방에 있는 다른 사용자] 퇴장 메시지 전송
-                    MessageResponse chatRoomExitMessageRes = new MessageResponse(MessageType.EXIT, exitChatReq.getChatRoomName(), exitUser.getNickName(), exitUser.getExitString());
-                    sendMessage(chatRoomExitMessageRes);
-
-                    // [to 채팅방에 있는 모든 사용자 (나 자신 포함)] 사용자 리스트 전송
-                    UserListResponse exitChatRoomUserListRes = new UserListResponse(exitChatRoomName, chatService.getChatRoomUsers(exitChatRoomName));
-                    sendMessage(exitChatRoomUserListRes);
+        case ENTER_CHAT:
+            // 채팅방 입장
+            EnterChatRequest enterReq = new EnterChatRequest(message);
+            System.out.println("[ENTER_CHAT] 입장 요청 - 사용자: " + enterReq.getUserId() + ", 방: " + enterReq.getChatRoomName());
+            
+            chatService.enterChatRoom(enterReq.getChatRoomName(), enterReq.getUserId());
+            
+            // 이전 메시지 불러오기 (최근 100개) - 로비가 아닌 경우에만
+            if (!"Lobby".equals(enterReq.getChatRoomName())) {
+                List<ChatDao.ChatMessage> previousMessages = chatService.loadChatMessages(enterReq.getChatRoomName());
+                User enteringUser = chatService.getUser(enterReq.getUserId());
+                if (enteringUser != null && enteringUser.getSocket() != null) {
+                    for (ChatDao.ChatMessage msg : previousMessages) {
+                        MessageResponse historyMsg = new MessageResponse(
+                            MessageType.CHAT,
+                            enterReq.getChatRoomName(),
+                            msg.getNickname(),
+                            msg.getContent()
+                        );
+                        PrintWriter writer = new PrintWriter(enteringUser.getSocket().getOutputStream());
+                        writer.println(historyMsg);
+                        writer.flush();
+                    }
                 }
+            }
+            
+            // 입장 메시지를 채팅방의 모든 사용자에게 전송
+            User enteredUser = chatService.getUser(enterReq.getUserId());
+            MessageResponse enterMsg = new MessageResponse(
+                MessageType.ENTER,
+                enterReq.getChatRoomName(),
+                enteredUser.getNickName(),
+                enteredUser.getNickName() + "님이 입장하셨습니다."
+            );
+            broadcastToRoom(enterReq.getChatRoomName(), enterMsg);
+            
+            // 채팅방 사용자 목록 전송
+            List<User> users = chatService.getChatRoomUsers(enterReq.getChatRoomName());
+            UserListResponse enterUserList = new UserListResponse(enterReq.getChatRoomName(), users);
+            broadcastToRoom(enterReq.getChatRoomName(), enterUserList);
+            
+            System.out.println("[ENTER_CHAT] 입장 완료 - 현재 인원: " + users.size());
+            break;
 
-                // 채팅방에 더 이상 사용자가 없는 경우
-                // 채팅방 목록 갱신
-                else {
-                    ChatRoomListResponse chatRoomListRes = new ChatRoomListResponse(chatService.getChatRooms());
-                    sendMessage(chatRoomListRes);
-                }
+        case EXIT_CHAT:
+            // 채팅방 퇴장
+            ExitChatRequest exitReq = new ExitChatRequest(message);
+            System.out.println("[EXIT_CHAT] 퇴장 요청 - 사용자: " + exitReq.getUserId() + ", 방: " + exitReq.getChatRoomName());
+            
+            User exitedUser = chatService.exitChatRoom(exitReq.getChatRoomName(), exitReq.getUserId());
+            
+            // 퇴장 메시지 전송
+            MessageResponse exitMsg = new MessageResponse(
+                MessageType.EXIT,
+                exitReq.getChatRoomName(),
+                exitedUser.getNickName(),
+                exitedUser.getNickName() + "님이 퇴장하셨습니다."
+            );
+            broadcastToRoom(exitReq.getChatRoomName(), exitMsg);
+            
+            // 남은 사용자들에게 업데이트된 사용자 목록 전송
+            ChatRoom exitRoom = chatService.getChatRoom(exitReq.getChatRoomName());
+            if (exitRoom != null && exitRoom.ieExistUser()) {
+                List<User> remainingUsers = chatService.getChatRoomUsers(exitReq.getChatRoomName());
+                UserListResponse exitUserList = new UserListResponse(exitReq.getChatRoomName(), remainingUsers);
+                broadcastToRoom(exitReq.getChatRoomName(), exitUserList);
+            }
+            
+            System.out.println("[EXIT_CHAT] 퇴장 완료");
+            break;
 
-                break;
+        case MESSAGE:
+            // 채팅 메시지
+            MessageResponse chatMsg = new MessageResponse(message);
+            System.out.println("[MESSAGE] 메시지 수신 - 방: " + chatMsg.getChatRoomName() + ", 발신자: " + chatMsg.getUserName() + ", 내용: " + chatMsg.getMessage());
+            
+            // DB에 메시지 저장 (로비가 아닌 채팅방의 일반 채팅만)
+            if (chatMsg.getMessageType() == MessageType.CHAT && !"Lobby".equals(chatMsg.getChatRoomName())) {
+                chatService.saveChatMessage(chatMsg.getChatRoomName(), chatMsg.getUserName(), chatMsg.getMessage());
+            }
+            
+            // 로비 메시지는 모든 접속자에게, 채팅방 메시지는 해당 채팅방 사용자에게만 전송
+            if ("Lobby".equals(chatMsg.getChatRoomName())) {
+                broadcastToAll(chatMsg);
+            } else {
+                broadcastToRoom(chatMsg.getChatRoomName(), chatMsg);
+            }
+            
+            System.out.println("[MESSAGE] 메시지 전송 완료");
+            break;
+
+        case USER_LIST:
+        case CHAT_ROOM_LIST:
+            System.out.println("아직 구현되지 않은 기능: " + type);
+            break;
+
+        default:
+            System.out.println("알 수 없는 메시지 타입: " + type);
+            break;
         }
     }
 
@@ -240,77 +326,58 @@ private void sendResponse(String message) throws IOException {
     writer.flush();
 }
 
+private void sendDtoResponse(DtoType type) throws IOException {
+    PrintWriter writer = new PrintWriter(socket.getOutputStream());
+    writer.println(type.toString());
+    writer.flush();
+}
+
     private void sendMessage(DTO dto) {
-        DtoType type = dto.getType();
-
         try {
-            PrintWriter sender = null;
-            switch (type) {
-                case LOGIN:
-                    InitDataResponse initDataResponse = (InitDataResponse) dto;
-
-                    // 로그인 한 자신에게만 전송
-                    sender = new PrintWriter(socket.getOutputStream());
-                    sender.println(initDataResponse);
-                    sender.flush();
-                    break;
-
-                    // 채팅방에 표시되는 메시지 전송 (입장 메시지, 대화 메시지)
-                case MESSAGE:
-                    MessageResponse messageReq = (MessageResponse) dto;
-
-                    ChatRoom chatRoom = chatService.getChatRoom(messageReq.getChatRoomName());
-                    List<User> chatUsers = chatRoom.getUsers();
-
-                    // 나를 제외한 사용자에게 모두 출력
-                    for (User user : chatUsers) {
-                        Socket s = user.getSocket();
-                        if (s != socket) {
-                            sender = new PrintWriter(s.getOutputStream());
-                            sender.println(messageReq);
-                            sender.flush();
-                        }
-                    }
-                    break;
-
-                case USER_LIST:
-                    // 사용자 리스트 추가
-                    // dto 에 담긴 사용자 리스트에 따라 추가
-                    UserListResponse userListRes = (UserListResponse) dto;
-
-                    for (User user : userListRes.getUsers()) {
-                        Socket s = user.getSocket();
-                        sender = new PrintWriter(s.getOutputStream());
-                        sender.println(userListRes);
-                        sender.flush();
-                    }
-                    break;
-
-                case CREATE_CHAT:
-                    CreateChatRoomResponse createChatRoomResponse = (CreateChatRoomResponse) dto;
-
-                    for (Socket s : ServerApplication.sockets) {
-                        sender = new PrintWriter(s.getOutputStream());
-                        sender.println(createChatRoomResponse);
-                        sender.flush();
-                    }
-                    break;
-
-                case CHAT_ROOM_LIST:
-                    ChatRoomListResponse chatRoomListResponse = (ChatRoomListResponse) dto;
-
-                    for (Socket s : ServerApplication.sockets) {
-                        sender = new PrintWriter(s.getOutputStream());
-                        sender.println(chatRoomListResponse);
-                        sender.flush();
-                    }
-                    break;
-            }
-        }
-        catch (IOException e) {
+            PrintWriter sender = new PrintWriter(socket.getOutputStream());
+            sender.println(dto);
+            sender.flush();
+        } catch (IOException e) {
             e.printStackTrace();
         }
-
+    }
+    
+    // 특정 채팅방의 모든 사용자에게 메시지 전송
+    private void broadcastToRoom(String roomName, DTO dto) {
+        try {
+            ChatRoom room = chatService.getChatRoom(roomName);
+            if (room == null) {
+                System.out.println("[ERROR] 채팅방을 찾을 수 없음: " + roomName);
+                return;
+            }
+            
+            List<User> roomUsers = room.getUsers();
+            for (User user : roomUsers) {
+                Socket userSocket = user.getSocket();
+                if (userSocket != null && !userSocket.isClosed()) {
+                    PrintWriter sender = new PrintWriter(userSocket.getOutputStream());
+                    sender.println(dto);
+                    sender.flush();
+                }
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+    
+    // 모든 접속 중인 사용자에게 메시지 전송
+    private void broadcastToAll(DTO dto) {
+        try {
+            for (Socket s : ServerApplication.sockets) {
+                if (s != null && !s.isClosed()) {
+                    PrintWriter sender = new PrintWriter(s.getOutputStream());
+                    sender.println(dto);
+                    sender.flush();
+                }
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
     //비밀번호 유효성 규칙
     private boolean isValidPassword(String password) {
@@ -319,5 +386,77 @@ private void sendResponse(String message) throws IOException {
         boolean hasDigit = password.matches(".*\\d.*");
         boolean hasSpecial = password.matches(".*[!@#$%^&*(),.?\":{}|<>].*");
         return hasLetter && hasDigit && hasSpecial;
+    }
+    
+    // HTTP POST 요청 처리 (우편번호 검색)
+    private void handleHttpAddressRequest(BufferedReader reader) {
+        try {
+            StringBuilder body = new StringBuilder();
+            String line;
+            int contentLength = 0;
+            
+            // HTTP 헤더 읽기
+            while ((line = reader.readLine()) != null && !line.isEmpty()) {
+                if (line.startsWith("Content-Length:")) {
+                    contentLength = Integer.parseInt(line.substring(16).trim());
+                }
+            }
+            
+            // HTTP 바디 읽기 (JSON)
+            if (contentLength > 0) {
+                char[] buffer = new char[contentLength];
+                reader.read(buffer, 0, contentLength);
+                body.append(buffer);
+            }
+            
+            String jsonBody = body.toString();
+            System.out.println("[HTTP] Address request: " + jsonBody);
+            
+            // JSON 파싱 (간단한 문자열 처리)
+            String postal = extractJsonValue(jsonBody, "postal");
+            String address = extractJsonValue(jsonBody, "address");
+            
+            if (postal != null && address != null) {
+                // ADDRESS_RESULT 메시지로 클라이언트에 전송
+                String result = postal + "|" + address;
+                sendDtoMessage("ADDRESS_RESULT:" + result);
+                System.out.println("[HTTP] Address sent to client: " + result);
+            }
+            
+            // HTTP 응답
+            PrintWriter writer = new PrintWriter(socket.getOutputStream());
+            writer.println("HTTP/1.1 200 OK");
+            writer.println("Access-Control-Allow-Origin: *");
+            writer.println("Content-Type: application/json");
+            writer.println("Content-Length: 15");
+            writer.println();
+            writer.println("{\"ok\":true}");
+            writer.flush();
+            
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+    
+    // 간단한 JSON 값 추출
+    private String extractJsonValue(String json, String key) {
+        String searchKey = "\"" + key + "\":";
+        int startIndex = json.indexOf(searchKey);
+        if (startIndex == -1) return null;
+        
+        startIndex = json.indexOf("\"", startIndex + searchKey.length()) + 1;
+        int endIndex = json.indexOf("\"", startIndex);
+        
+        if (startIndex > 0 && endIndex > startIndex) {
+            return json.substring(startIndex, endIndex);
+        }
+        return null;
+    }
+    
+    // DtoType 메시지 전송
+    private void sendDtoMessage(String message) throws IOException {
+        PrintWriter writer = new PrintWriter(socket.getOutputStream());
+        writer.println(message);
+        writer.flush();
     }
 }
