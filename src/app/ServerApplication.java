@@ -39,9 +39,6 @@ public class ServerApplication {
             chatService = new ChatService(chatDao);
             
 
-            chatService.initChatRooms();
-            System.out.println("DB에서 채팅방 로드 완료: " + chatService.getChatRooms().size() + "개");
-
             // 4. 서버 소켓 설정
             ServerSocket serverSocket = new ServerSocket(9000);
             System.out.println("서버 시작됨. 포트 9000");

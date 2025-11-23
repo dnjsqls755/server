@@ -100,10 +100,27 @@ public class ServerThread extends Thread {
             chatService.addUser(user);
             chatService.enterLobby(user);
 
+            // 4-1. 로그인 시점에 DB에 저장된 채팅방 최신화
+            chatService.loadChatRoomsFromDb();
+
             // 5. 클라이언트에게 초기 데이터 전송
             sendMessage(new MessageResponse(MessageType.ENTER, ChatDao.LOBBY_CHAT_NAME, user.getNickName(), user.getEnterString()));
             sendMessage(new InitDataResponse(chatService.getChatRooms(), chatService.getUsers()));
             sendMessage(new UserListResponse(ChatDao.LOBBY_CHAT_NAME, chatService.getUsers()));
+            break;
+
+        case MESSAGE:
+            MessageResponse chatMessage = new MessageResponse(message);
+
+            if (chatMessage.getMessageType() == MessageType.CHAT) {
+                chatService.saveChatMessage(
+                        chatMessage.getChatRoomName(),
+                        chatMessage.getUserName(),
+                        chatMessage.getMessage()
+                );
+            }
+
+            sendMessage(chatMessage);
             break;
 
         case ID_CHECK:

@@ -32,8 +32,20 @@ public class MessageResponse extends DTO {
         this.message = message;
     }
 
+    public MessageType getMessageType() {
+        return messageType;
+    }
+
     public String getChatRoomName() {
         return chatRoomName;
+    }
+
+    public String getUserName() {
+        return userName;
+    }
+
+    public String getMessage() {
+        return message;
     }
 
     @Override
