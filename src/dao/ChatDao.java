@@ -75,6 +75,14 @@ public class ChatDao {
     }
     //채팅방 이름으로 채팅방 조회
     public Optional<ChatRoom> findChatRoomByName(String name) {
+        // 1차: 메모리에서 먼저 검색 (사용자 목록 등 상태 유지)
+        for (ChatRoom room : chatRooms) {
+            if (room.getName().equals(name)) {
+                return Optional.of(room);
+            }
+        }
+
+        // 2차: DB에서 조회 후 메모리에 등록
         String sql = "SELECT room_name, creator_id FROM ChatRooms WHERE room_name = ?";
         try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
             pstmt.setString(1, name);
@@ -82,7 +90,9 @@ public class ChatDao {
             if (rs.next()) {
                 String roomName = rs.getString("room_name");
                 String creatorId = rs.getString("creator_id");
-                return Optional.of(new ChatRoom(roomName, creatorId));
+                ChatRoom newRoom = new ChatRoom(roomName, creatorId);
+                chatRooms.add(newRoom); // 메모리에 캐싱
+                return Optional.of(newRoom);
             }
         } catch (SQLException e) {
             e.printStackTrace();
@@ -152,7 +162,7 @@ public class ChatDao {
         public String getSentAt() { return sentAt; }
     }
 
-    // 채팅방의 이전 메시지 불러오기
+    // 채팅방의 이전 메시지 불러오기 (시간 포함)
     public List<ChatMessage> loadMessages(String roomName, int limit) {
         List<ChatMessage> messages = new ArrayList<>();
         String sql = "SELECT u.nickname, m.content, TO_CHAR(m.sent_at, 'HH24:MI') as sent_time " +
@@ -160,7 +170,7 @@ public class ChatDao {
                      "JOIN ChatRooms r ON m.room_id = r.room_id " +
                      "JOIN users u ON m.sender_id = u.user_id " +
                      "WHERE r.room_name = ? " +
-                     "ORDER BY m.sent_at DESC " +
+                     "ORDER BY m.sent_at ASC " +
                      "FETCH FIRST ? ROWS ONLY";
         
         try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
@@ -182,8 +192,8 @@ public class ChatDao {
         return messages;
     }
 
-    // 채팅방에 사용자 추가 (DB)
-    public void addUserToChatRoom(String roomName, String userId) {
+    // 채팅방에 사용자 추가 (DB) - 영향받은 행 수 반환
+    public int addUserToChatRoom(String roomName, String userId) {
         String sql = "INSERT INTO ChatRoomUsers (room_id, user_id) " +
                      "SELECT r.room_id, ? FROM ChatRooms r " +
                      "WHERE r.room_name = ? " +
@@ -192,9 +202,10 @@ public class ChatDao {
             pstmt.setString(1, userId);
             pstmt.setString(2, roomName);
             pstmt.setString(3, userId);
-            pstmt.executeUpdate();
+            return pstmt.executeUpdate();
         } catch (SQLException e) {
             e.printStackTrace();
+            return 0;
         }
     }
 

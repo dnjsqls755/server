@@ -19,11 +19,9 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.net.Socket;
-import java.util.ArrayList;
 import java.util.List;
 
 import java.io.DataInputStream;
-import java.io.FileOutputStream;
 import java.io.File;
 import java.awt.Image;
 import java.awt.image.BufferedImage;
@@ -223,43 +221,48 @@ public class ServerThread extends Thread {
             EnterChatRequest enterReq = new EnterChatRequest(message);
             System.out.println("[ENTER_CHAT] 입장 요청 - 사용자: " + enterReq.getUserId() + ", 방: " + enterReq.getChatRoomName());
             
-            chatService.enterChatRoom(enterReq.getChatRoomName(), enterReq.getUserId());
-            
-            // 이전 메시지 불러오기 (최근 100개) - 로비가 아닌 경우에만
-            if (!"Lobby".equals(enterReq.getChatRoomName())) {
-                List<ChatDao.ChatMessage> previousMessages = chatService.loadChatMessages(enterReq.getChatRoomName());
-                User enteringUser = chatService.getUser(enterReq.getUserId());
-                if (enteringUser != null && enteringUser.getSocket() != null) {
-                    for (ChatDao.ChatMessage msg : previousMessages) {
-                        MessageResponse historyMsg = new MessageResponse(
-                            MessageType.CHAT,
-                            enterReq.getChatRoomName(),
-                            msg.getNickname(),
-                            msg.getContent()
-                        );
-                        PrintWriter writer = new PrintWriter(enteringUser.getSocket().getOutputStream());
-                        writer.println(historyMsg);
-                        writer.flush();
-                    }
-                }
+            // 사용자 검증
+            User requestUser = chatService.getUser(enterReq.getUserId());
+            if (requestUser == null) {
+                System.out.println("[ENTER_CHAT] 로그인하지 않은 사용자: " + enterReq.getUserId());
+                sendResponse("ENTER_FAIL:로그인이 필요합니다.");
+                break;
             }
             
-            // 입장 메시지를 채팅방의 모든 사용자에게 전송
-            User enteredUser = chatService.getUser(enterReq.getUserId());
-            MessageResponse enterMsg = new MessageResponse(
-                MessageType.ENTER,
-                enterReq.getChatRoomName(),
-                enteredUser.getNickName(),
-                enteredUser.getNickName() + "님이 입장하셨습니다."
-            );
-            broadcastToRoom(enterReq.getChatRoomName(), enterMsg);
+            // 신규 입장인지 확인 (DB에 새로 등록되었는지)
+            boolean isNewEntry = chatService.enterChatRoom(enterReq.getChatRoomName(), enterReq.getUserId());
+            
+            // 이전 메시지 불러오기 (최근 100개) - 로비 제외, 한번에 전송
+            if (!"Lobby".equals(enterReq.getChatRoomName())) {
+                List<ChatDao.ChatMessage> previousMessages = chatService.loadChatMessages(enterReq.getChatRoomName());
+                List<ChatHistoryResponse.HistoryEntry> list = new java.util.ArrayList<>();
+                for (ChatDao.ChatMessage m : previousMessages) {
+                    list.add(new ChatHistoryResponse.HistoryEntry(m.getNickname(), m.getSentAt(), m.getContent()));
+                }
+                ChatHistoryResponse historyResponse = new ChatHistoryResponse(enterReq.getChatRoomName(), list);
+                PrintWriter writer = new PrintWriter(requestUser.getSocket().getOutputStream());
+                writer.println(historyResponse);
+                writer.flush();
+            }
+            
+            // 신규 입장인 경우에만 입장 메시지 전송
+            if (isNewEntry) {
+                User enteredUser = chatService.getUser(enterReq.getUserId());
+                MessageResponse enterMsg = new MessageResponse(
+                    MessageType.ENTER,
+                    enterReq.getChatRoomName(),
+                    enteredUser.getNickName(),
+                    enteredUser.getNickName() + "님이 입장하셨습니다."
+                );
+                broadcastToRoom(enterReq.getChatRoomName(), enterMsg);
+            }
             
             // 채팅방 사용자 목록 전송
             List<User> users = chatService.getChatRoomUsers(enterReq.getChatRoomName());
             UserListResponse enterUserList = new UserListResponse(enterReq.getChatRoomName(), users);
             broadcastToRoom(enterReq.getChatRoomName(), enterUserList);
             
-            System.out.println("[ENTER_CHAT] 입장 완료 - 현재 인원: " + users.size());
+            System.out.println("[ENTER_CHAT] 입장 완료 - 현재 인원: " + users.size() + " (신규: " + isNewEntry + ")");
             break;
 
         case EXIT_CHAT:

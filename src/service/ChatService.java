@@ -174,27 +174,37 @@ public class ChatService {
         }
     }
 
-    // 채팅방 입장
-    public void enterChatRoom(String roomName, String userId) {
+    // 채팅방 입장 (신규 입장인지 여부 반환)
+    public boolean enterChatRoom(String roomName, String userId) {
         try {
             User user = chatDao.getUser(userId).orElse(null);
             if (user == null) {
                 System.out.println("[ERROR] 사용자를 찾을 수 없음: " + userId);
-                return;
+                return false;
             }
 
             ChatRoom room = chatDao.findChatRoomByName(roomName).orElse(null);
             if (room == null) {
                 System.out.println("[ERROR] 채팅방을 찾을 수 없음: " + roomName);
-                return;
+                return false;
             }
 
-            room.addUser(user);
+            // 메모리에 이미 있는지 확인 (뒤로가기 후 재입장 케이스)
+            boolean alreadyInMemory = room.getUsers().stream()
+                .anyMatch(u -> u.getId().equals(userId));
             
-            // DB에 채팅방-사용자 관계 저장
-            chatDao.addUserToChatRoom(roomName, userId);
+            if (!alreadyInMemory) {
+                room.addUser(user);
+            }
+            
+            // DB에 채팅방-사용자 관계 저장 (중복 방지 쿼리)
+            int inserted = chatDao.addUserToChatRoom(roomName, userId);
+            
+            // DB에 신규 등록된 경우에만 true 반환
+            return inserted > 0;
         } catch (Exception e) {
             e.printStackTrace();
+            return false;
         }
     }
 

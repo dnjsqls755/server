@@ -18,4 +18,5 @@ public enum DtoType {
     SIGNUP_INVALID_PASSWORD,//비밀번호 형식 오류
     ADDRESS_RESULT,//우편번호 검색 결과
     USER_LIST, CHAT_ROOM_LIST,
+    CHAT_HISTORY,//채팅방 이전 대화 목록
 }
