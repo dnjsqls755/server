@@ -106,6 +106,9 @@ public class ServerThread extends Thread {
             // 소켓 연결 정보 설정
             user.setSocket(socket);
 
+            // 서버 메모리에 이미 있는 사용자라면 제거 (중복 방지)
+            chatService.removeUser(user.getId());
+            
             // 서버 메모리에 사용자 추가
             chatService.addUser(user);
 
@@ -232,18 +235,8 @@ public class ServerThread extends Thread {
             // 신규 입장인지 확인 (DB에 새로 등록되었는지)
             boolean isNewEntry = chatService.enterChatRoom(enterReq.getChatRoomName(), enterReq.getUserId());
             
-            // 이전 메시지 불러오기 (최근 100개) - 로비 제외, 한번에 전송
-            if (!"Lobby".equals(enterReq.getChatRoomName())) {
-                List<ChatDao.ChatMessage> previousMessages = chatService.loadChatMessages(enterReq.getChatRoomName());
-                List<ChatHistoryResponse.HistoryEntry> list = new java.util.ArrayList<>();
-                for (ChatDao.ChatMessage m : previousMessages) {
-                    list.add(new ChatHistoryResponse.HistoryEntry(m.getNickname(), m.getSentAt(), m.getContent()));
-                }
-                ChatHistoryResponse historyResponse = new ChatHistoryResponse(enterReq.getChatRoomName(), list);
-                PrintWriter writer = new PrintWriter(requestUser.getSocket().getOutputStream());
-                writer.println(historyResponse);
-                writer.flush();
-            }
+            // 이전 대화 내역은 로드하지 않음 (입장 시점 이후 메시지만 표시)
+            // 채팅방 입장 시점부터의 대화만 볼 수 있도록 변경
             
             // 신규 입장인 경우에만 입장 메시지 전송
             if (isNewEntry) {
