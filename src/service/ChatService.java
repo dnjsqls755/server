@@ -331,7 +331,19 @@ public class ChatService {
     }
 
     public boolean updateBanStatus(String userId, boolean banned) {
-        return chatDao.updateBanStatus(userId, banned);
+        boolean ok = chatDao.updateBanStatus(userId, banned);
+        if (ok) {
+            // 메모리 사용자 객체의 차단 상태 동기화
+            User u = chatDao.getUser(userId).orElse(null);
+            if (u != null) {
+                u.setBanned(banned);
+                // 차단된 경우 온라인 상태도 즉시 반영 (선택)
+                if (banned) {
+                    u.setOnline(false);
+                }
+            }
+        }
+        return ok;
     }
 
     public List<ChatRoom> getChatRoomsWithCounts() {
