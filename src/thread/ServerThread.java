@@ -455,7 +455,7 @@ public class ServerThread extends Thread {
                 sendMessage(new AdminActionResultResponse(false, "관리자 권한이 없습니다."));
                 break;
             }
-            AdminBanRequest banReq = new AdminBanRequest(message, true);
+            AdminBanRequest banReq = new AdminBanRequest(message);
             boolean banUpdated = chatService.updateBanStatus(banReq.getUserId(), banReq.isBanned());
             if (banUpdated && banReq.isBanned()) {
                 handleForceLogout(banReq.getUserId(), "계정이 차단되어 로그아웃되었습니다.");
