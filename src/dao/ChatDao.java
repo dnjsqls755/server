@@ -108,6 +108,17 @@ public class ChatDao {
         return users;
     }
 
+    public void updateOnlineStatus(String userId, boolean online) {
+        String sql = "UPDATE users SET is_online = ? WHERE user_id = ?";
+        try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
+            pstmt.setInt(1, online ? 1 : 0);
+            pstmt.setString(2, userId);
+            pstmt.executeUpdate();
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
     public Optional<User> getUser(String userId) {
         return users.stream().filter(user -> user.getId().equals(userId)).findAny();
     }
@@ -165,7 +176,10 @@ public class ChatDao {
     // 채팅방의 이전 메시지 불러오기 (시간 포함)
     public List<ChatMessage> loadMessages(String roomName, int limit) {
         List<ChatMessage> messages = new ArrayList<>();
-        String sql = "SELECT u.nickname, m.content, TO_CHAR(m.sent_at, 'HH24:MI') as sent_time " +
+        String sql = "SELECT CASE " +
+                     "         WHEN EXISTS (SELECT 1 FROM ChatRoomUsers cu2 WHERE cu2.room_id = m.room_id AND cu2.user_id = u.user_id) " +
+                     "              THEN u.nickname ELSE '(알수없음)' END AS nickname, " +
+                     "       m.content, TO_CHAR(m.sent_at, 'HH24:MI') as sent_time " +
                      "FROM Messages m " +
                      "JOIN ChatRooms r ON m.room_id = r.room_id " +
                      "JOIN users u ON m.sender_id = u.user_id " +
@@ -179,7 +193,7 @@ public class ChatDao {
             ResultSet rs = pstmt.executeQuery();
             
             while (rs.next()) {
-                messages.add(0, new ChatMessage(
+                messages.add(new ChatMessage(
                     rs.getString("nickname"),
                     rs.getString("content"),
                     rs.getString("sent_time")
@@ -237,5 +251,244 @@ public class ChatDao {
         }
         return null;
     }
-}
 
+    public String findNicknameByUserId(String userId) {
+        String sql = "SELECT nickname FROM users WHERE user_id = ?";
+        try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
+            pstmt.setString(1, userId);
+            ResultSet rs = pstmt.executeQuery();
+            if (rs.next()) {
+                return rs.getString("nickname");
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return null;
+    }
+
+    // 친구 목록 조회
+    public List<User> getFriends(String userId) {
+        List<User> friends = new ArrayList<>();
+        String sql = "SELECT u.user_id, u.nickname FROM Friends f JOIN Users u ON f.friend_id = u.user_id WHERE f.user_id = ?";
+        try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
+            pstmt.setString(1, userId);
+            ResultSet rs = pstmt.executeQuery();
+            while (rs.next()) {
+                friends.add(new User(rs.getString("user_id"), rs.getString("nickname")));
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return friends;
+    }
+
+    public boolean areFriends(String userId, String friendId) {
+        String sql = "SELECT COUNT(*) FROM Friends WHERE user_id = ? AND friend_id = ?";
+        try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
+            pstmt.setString(1, userId);
+            pstmt.setString(2, friendId);
+            ResultSet rs = pstmt.executeQuery();
+            if (rs.next()) {
+                return rs.getInt(1) > 0;
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return false;
+    }
+
+    public boolean addFriendship(String userId, String friendId) {
+        String sql = "INSERT INTO Friends (friendship_id, user_id, friend_id) VALUES (friendship_seq.NEXTVAL, ?, ?)";
+        try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
+            pstmt.setString(1, userId);
+            pstmt.setString(2, friendId);
+            return pstmt.executeUpdate() > 0;
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return false;
+    }
+
+    public boolean removeFriendship(String userId, String friendId) {
+        String sql = "DELETE FROM Friends WHERE user_id = ? AND friend_id = ?";
+        try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
+            pstmt.setString(1, userId);
+            pstmt.setString(2, friendId);
+            return pstmt.executeUpdate() > 0;
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return false;
+    }
+
+    public boolean updateNickname(String userId, String newNickname) {
+        String sql = "UPDATE users SET nickname = ? WHERE user_id = ?";
+        try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
+            pstmt.setString(1, newNickname);
+            pstmt.setString(2, userId);
+            return pstmt.executeUpdate() > 0;
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return false;
+    }
+
+    public List<User> findAllUsersWithStatus() {
+        List<User> result = new ArrayList<>();
+        String sql = "SELECT user_id, nickname, role, NVL(is_online, 0) AS is_online, NVL(is_banned, 0) AS is_banned FROM users";
+        try (PreparedStatement pstmt = connection.prepareStatement(sql);
+             ResultSet rs = pstmt.executeQuery()) {
+            while (rs.next()) {
+                result.add(new User(
+                        rs.getString("user_id"),
+                        rs.getString("nickname"),
+                        rs.getString("role"),
+                        rs.getInt("is_online") == 1,
+                        rs.getInt("is_banned") == 1
+                ));
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return result;
+    }
+
+    public boolean updateBanStatus(String userId, boolean banned) {
+        String sql = "UPDATE users SET is_banned = ? WHERE user_id = ?";
+        try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
+            pstmt.setInt(1, banned ? 1 : 0);
+            pstmt.setString(2, userId);
+            return pstmt.executeUpdate() > 0;
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return false;
+    }
+
+    public List<ChatRoom> findChatRoomsWithCounts() {
+        List<ChatRoom> rooms = new ArrayList<>();
+        String sql = "SELECT r.room_name, r.creator_id, " +
+                "(SELECT COUNT(*) FROM ChatRoomUsers cu WHERE cu.room_id = r.room_id) AS member_count " +
+                "FROM ChatRooms r";
+        try (PreparedStatement pstmt = connection.prepareStatement(sql);
+             ResultSet rs = pstmt.executeQuery()) {
+            while (rs.next()) {
+                rooms.add(new ChatRoom(
+                        rs.getString("room_name"),
+                        rs.getString("creator_id"),
+                        rs.getInt("member_count")
+                ));
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return rooms;
+    }
+
+    public boolean deleteChatRoom(String roomName) {
+        if (LOBBY_CHAT_NAME.equals(roomName)) {
+            return false;
+        }
+
+        String findRoomSql = "SELECT room_id FROM ChatRooms WHERE room_name = ?";
+        try (PreparedStatement findStmt = connection.prepareStatement(findRoomSql)) {
+            findStmt.setString(1, roomName);
+            ResultSet rs = findStmt.executeQuery();
+            if (!rs.next()) {
+                return false;
+            }
+            int roomId = rs.getInt("room_id");
+
+            try (PreparedStatement deleteUsers = connection.prepareStatement("DELETE FROM ChatRoomUsers WHERE room_id = ?")) {
+                deleteUsers.setInt(1, roomId);
+                deleteUsers.executeUpdate();
+            }
+
+            try (PreparedStatement deleteMessages = connection.prepareStatement("DELETE FROM Messages WHERE room_id = ?")) {
+                deleteMessages.setInt(1, roomId);
+                deleteMessages.executeUpdate();
+            }
+
+            try (PreparedStatement deleteRoom = connection.prepareStatement("DELETE FROM ChatRooms WHERE room_id = ?")) {
+                deleteRoom.setInt(1, roomId);
+                deleteRoom.executeUpdate();
+            }
+
+            chatRooms.removeIf(r -> r.getName().equals(roomName));
+            return true;
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return false;
+    }
+
+    public List<AdminMessageRecord> searchMessages(String nicknameFilter, String roomNameFilter) {
+        List<AdminMessageRecord> result = new ArrayList<>();
+        StringBuilder sql = new StringBuilder(
+                "SELECT m.message_id, r.room_name, u.nickname, m.content, TO_CHAR(m.sent_at, 'YYYY-MM-DD HH24:MI:SS') AS sent_at " +
+                "FROM Messages m JOIN ChatRooms r ON m.room_id = r.room_id " +
+                "JOIN Users u ON m.sender_id = u.user_id WHERE 1=1 ");
+        List<String> params = new ArrayList<>();
+        if (nicknameFilter != null && !nicknameFilter.isBlank()) {
+            sql.append("AND LOWER(u.nickname) LIKE LOWER(?) ");
+            params.add("%" + nicknameFilter + "%");
+        }
+        if (roomNameFilter != null && !roomNameFilter.isBlank()) {
+            sql.append("AND LOWER(r.room_name) LIKE LOWER(?) ");
+            params.add("%" + roomNameFilter + "%");
+        }
+        sql.append("ORDER BY m.sent_at DESC FETCH FIRST 200 ROWS ONLY");
+
+        try (PreparedStatement pstmt = connection.prepareStatement(sql.toString())) {
+            for (int i = 0; i < params.size(); i++) {
+                pstmt.setString(i + 1, params.get(i));
+            }
+            ResultSet rs = pstmt.executeQuery();
+            while (rs.next()) {
+                result.add(new AdminMessageRecord(
+                        rs.getLong("message_id"),
+                        rs.getString("room_name"),
+                        rs.getString("nickname"),
+                        rs.getString("content"),
+                        rs.getString("sent_at")
+                ));
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return result;
+    }
+
+    public boolean deleteMessage(long messageId) {
+        String sql = "DELETE FROM Messages WHERE message_id = ?";
+        try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
+            pstmt.setLong(1, messageId);
+            return pstmt.executeUpdate() > 0;
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return false;
+    }
+
+    public static class AdminMessageRecord {
+        private final long id;
+        private final String roomName;
+        private final String nickname;
+        private final String content;
+        private final String sentAt;
+
+        public AdminMessageRecord(long id, String roomName, String nickname, String content, String sentAt) {
+            this.id = id;
+            this.roomName = roomName;
+            this.nickname = nickname;
+            this.content = content;
+            this.sentAt = sentAt;
+        }
+
+        public long getId() { return id; }
+        public String getRoomName() { return roomName; }
+        public String getNickname() { return nickname; }
+        public String getContent() { return content; }
+        public String getSentAt() { return sentAt; }
+    }
+}

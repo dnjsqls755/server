@@ -6,53 +6,63 @@ import java.util.Date;
 
 public class User {
 
-    private Socket socket; // 현재 입장한 채팅방의 소켓
-    private String pw; // 비밀번호
-    private String id; // 아이디: 사용자 식별자
-    private String nickname; // 이름: 채팅방에서 사용되는 이름
-    private Date createdAt; // 로그인 시점
+    private Socket socket; // active socket for the connected client
+    private String pw;
+    private String id;
+    private String nickname;
+    private Date createdAt;
+    private String role = "USER";
+    private boolean online;
+    private boolean banned;
 
-    // ✅ 기본 생성자
     public User() {
         this.createdAt = new Date();
     }
 
-    // ✅ 두 개의 String을 받는 생성자
     public User(String id, String nickname) {
+        this(id, nickname, "USER", false, false);
+    }
+
+    public User(String id, String nickname, String role, boolean online, boolean banned) {
         this.id = id;
         this.nickname = nickname;
+        this.role = role;
+        this.online = online;
+        this.banned = banned;
         this.createdAt = new Date();
     }
 
-    // ✅ Socket과 LoginRequest를 받는 생성자
     public User(Socket socket, LoginRequest req) {
         this.socket = socket;
         this.id = req.getId();
         this.pw = req.getPw();
-        this.nickname = req.getNickname(); // 닉네임 설정 추가
+        this.nickname = req.getNickname();
         this.createdAt = new Date();
     }
 
-    // ✅ Getter 메서드
     public String getId() { return id; }
     public String getPw() { return pw; }
     public String getNickName() { return nickname; }
     public Date getCreatedAt() { return createdAt; }
     public Socket getSocket() { return socket; }
+    public String getRole() { return role; }
+    public boolean isOnline() { return online; }
+    public boolean isBanned() { return banned; }
 
-    // ✅ Setter 메서드
     public void setId(String id) { this.id = id; }
     public void setPw(String pw) { this.pw = pw; }
     public void setNickName(String nickname) { this.nickname = nickname; }
     public void setCreatedAt(Date createdAt) { this.createdAt = createdAt; }
     public void setSocket(Socket socket) { this.socket = socket; }
+    public void setRole(String role) { this.role = role; }
+    public void setOnline(boolean online) { this.online = online; }
+    public void setBanned(boolean banned) { this.banned = banned; }
 
-    // ✅ 입장/퇴장 메시지
     public String getEnterString() {
-        return "[" + nickname + "]님이 입장했습니다.";
+        return "[" + nickname + "] entered the room.";
     }
 
     public String getExitString() {
-        return "[" + nickname + "]님이 퇴장했습니다.";
+        return "[" + nickname + "] left the room.";
     }
 }

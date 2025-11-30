@@ -1,22 +1,15 @@
 package dto.response;
 
-import domain.ChatRoom;
 import domain.User;
 import dto.type.DtoType;
 
 import java.util.List;
 
-public class InitDataResponse extends DTO {
+public class AdminUserListResponse extends DTO {
+    private final List<User> users;
 
-    private List<ChatRoom> chatRooms;
-
-    private List<User> users;
-
-
-    public InitDataResponse(List<ChatRoom> chatRooms, List<User> users) {
-        super(DtoType.LOGIN);
-
-        this.chatRooms = chatRooms;
+    public AdminUserListResponse(List<User> users) {
+        super(DtoType.ADMIN_USER_LIST);
         this.users = users;
     }
 
@@ -24,15 +17,6 @@ public class InitDataResponse extends DTO {
     public String toString() {
         StringBuilder sb = new StringBuilder();
         sb.append(super.toString());
-
-        for (int i = 0; i < chatRooms.size(); i++) {
-            sb.append(chatRooms.get(i).getName());
-            if (i < chatRooms.size() - 1) {
-                sb.append("|");
-            }
-        }
-        sb.append("+");
-
         for (int i = 0; i < users.size(); i++) {
             User user = users.get(i);
             sb.append(user.getId()).append(",")
@@ -45,5 +29,9 @@ public class InitDataResponse extends DTO {
             }
         }
         return sb.toString();
+    }
+
+    public List<User> getUsers() {
+        return users;
     }
 }

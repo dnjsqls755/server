@@ -20,14 +20,20 @@ public class UserListResponse extends DTO {
 
     @Override
     public String toString() {
-        String str = super.toString();
-        str += chatRoomName + "|";
-        for (User user : users) {
-            str += user.getId() + "," + user.getNickName() + "|";
-
+        StringBuilder sb = new StringBuilder();
+        sb.append(super.toString()).append(chatRoomName).append("|");
+        for (int i = 0; i < users.size(); i++) {
+            User user = users.get(i);
+            sb.append(user.getId()).append(",")
+                    .append(user.getNickName() == null ? "" : user.getNickName()).append(",")
+                    .append(user.getRole() == null ? "USER" : user.getRole()).append(",")
+                    .append(user.isOnline() ? "1" : "0").append(",")
+                    .append(user.isBanned() ? "1" : "0");
+            if (i < users.size() - 1) {
+                sb.append("|");
+            }
         }
-
-        return str.substring(0, str.length() - 1);
+        return sb.toString();
     }
 
     public List<User> getUsers() {
