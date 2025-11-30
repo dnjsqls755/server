@@ -39,11 +39,24 @@ public class ChatService {
             pstmt.setString(10, req.getDetailAddress());
             pstmt.setString(11, req.getPostalCode());
             pstmt.setString(12, req.getGender());
-            pstmt.setDate(13, java.sql.Date.valueOf(req.getBirthDate()));
+            
+            // 생년월일 처리 - null 또는 빈 문자열 체크
+            if (req.getBirthDate() != null && !req.getBirthDate().trim().isEmpty()) {
+                try {
+                    pstmt.setDate(13, java.sql.Date.valueOf(req.getBirthDate()));
+                } catch (IllegalArgumentException e) {
+                    System.err.println("[SIGNUP] 생년월일 형식 오류: " + req.getBirthDate() + " (yyyy-MM-dd 형식 필요)");
+                    pstmt.setDate(13, null);
+                }
+            } else {
+                pstmt.setDate(13, null);
+            }
 
-            pstmt.executeUpdate();
-            return true;
+            int rows = pstmt.executeUpdate();
+            System.out.println("[SIGNUP] DB INSERT 성공 - userId: " + req.getUserId() + ", nickname: " + req.getNickname());
+            return rows > 0;
         } catch (Exception e) {
+            System.err.println("[SIGNUP ERROR] 회원가입 실패 - userId: " + req.getUserId());
             e.printStackTrace();
             return false;
         }

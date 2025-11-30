@@ -54,11 +54,16 @@ public class ServerThread extends Thread {
                     continue;
                 }
 
-                String[] token = str.split(":");
-                DtoType type = DtoType.valueOf(token[0]);
-                String message = token.length > 1 ? token[1] : "";
+                int sep = str.indexOf(':');
+                String typeToken = sep >= 0 ? str.substring(0, sep) : str;
+                String payload = sep >= 0 ? str.substring(sep + 1) : "";
 
-                processReceiveMessage(type, message);
+                try {
+                    DtoType type = DtoType.valueOf(typeToken);
+                    processReceiveMessage(type, payload);
+                } catch (IllegalArgumentException e) {
+                    System.err.println("[ERROR] 알 수 없는 DtoType: '" + typeToken + "' (원본: " + str + ")");
+                }
                 Thread.sleep(300);
             }
         } catch (Exception e) {
@@ -131,7 +136,10 @@ public class ServerThread extends Thread {
 
         case SIGNUP:
             JoinRequest joinReq = new JoinRequest(message);
+            System.out.println("[SIGNUP] 회원가입 요청 - userId: " + joinReq.getUserId() + ", nickname: " + joinReq.getNickname());
+            
             if (!isValidPassword(joinReq.getPassword())) {
+                System.out.println("[SIGNUP] 비밀번호 검증 실패 - 8자 이상, 영문/숫자/특수문자 필요");
                 sendDtoResponse(DtoType.SIGNUP_INVALID_PASSWORD);
                 break;
             }
@@ -139,8 +147,10 @@ public class ServerThread extends Thread {
             boolean success = chatService.signupUser(joinReq);
             if (success) {
                 try {
+                    System.out.println("[SIGNUP] DB 저장 성공, 프로필 이미지 수신 대기...");
                     DataInputStream dis = new DataInputStream(socket.getInputStream());
                     int length = dis.readInt();
+                    System.out.println("[SIGNUP] 이미지 크기: " + length + " bytes");
                     byte[] imageBytes = new byte[length];
                     dis.readFully(imageBytes);
 
@@ -161,11 +171,13 @@ public class ServerThread extends Thread {
 
                     System.out.println("[SIGNUP] 프로필 이미지 리사이징 완료: " + imagePath);
                 } catch (IOException ex) {
+                    System.err.println("[SIGNUP] 이미지 처리 실패: " + ex.getMessage());
                     ex.printStackTrace();
-                    System.out.println("이미지 처리 실패: " + ex.getMessage());
                 }
                 sendDtoResponse(DtoType.SIGNUP_SUCCESS);
+                System.out.println("[SIGNUP] 회원가입 완료 - userId: " + joinReq.getUserId());
             } else {
+                System.err.println("[SIGNUP] 회원가입 실패 - DB 저장 실패");
                 sendDtoResponse(DtoType.SIGNUP_FAIL);
             }
             break;
@@ -347,6 +359,49 @@ public class ServerThread extends Thread {
                 broadcastToRoom(roomName, directUserList);
             } else {
                 sendResponse("FRIEND_CHAT_FAIL");
+            }
+            break;
+
+        case FRIEND_CHAT_INVITE_ACCEPT:
+            {
+                String[] parts = message.split("\\|", 2);
+                String acceptRoom = parts.length > 0 ? parts[0] : "";
+                String acceptUserId = parts.length > 1 ? parts[1] : "";
+                if (!acceptRoom.isEmpty() && !acceptUserId.isEmpty()) {
+                    chatService.enterChatRoom(acceptRoom, acceptUserId);
+                    List<User> roomUsers = chatService.getChatRoomUsers(acceptRoom);
+                    UserListResponse list = new UserListResponse(acceptRoom, roomUsers);
+                    broadcastToRoom(acceptRoom, list);
+                }
+            }
+            break;
+
+        case FRIEND_CHAT_INVITE_DECLINE:
+            {
+                String[] parts = message.split("\\|", 2);
+                String declineRoom = parts.length > 0 ? parts[0] : "";
+                String declineUserId = parts.length > 1 ? parts[1] : "";
+                ChatRoom room = chatService.getChatRoom(declineRoom);
+                if (room != null) {
+                    String inviterId = room.getCreatorId();
+                    if (inviterId != null) {
+                        User inviter = chatService.getUser(inviterId);
+                        if (inviter != null) {
+                            FriendOperationResult result = new FriendOperationResult(false, "상대방이 1:1 채팅 요청을 거부했습니다.");
+                            sendMessageToUser(inviter, new FriendOperationResponse(DtoType.FRIEND_CHAT_INVITE_RESULT, result.isSuccess(), result.getMessage()));
+                        }
+                    }
+                    
+                    // 거절 시 생성된 빈 방 자동 삭제
+                    if (room.getUsers().isEmpty() || 
+                        (room.getUsers().size() == 1 && room.getUsers().get(0).getId().equals(inviterId))) {
+                        System.out.println("[INVITE_DECLINE] 빈 채팅방 자동 삭제: " + declineRoom);
+                        boolean deleted = chatService.deleteChatRoom(declineRoom);
+                        if (deleted) {
+                            broadcastToAll(new ChatRoomListResponse(chatService.getAllChatRooms()));
+                        }
+                    }
+                }
             }
             break;
 
