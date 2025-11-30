@@ -216,16 +216,28 @@ public class ServerThread extends Thread {
             UserListResponse enterUserList = new UserListResponse(enterReq.getChatRoomName(), users);
             broadcastToRoom(enterReq.getChatRoomName(), enterUserList);
 
+            // 사용자 목록을 보낸 후 이전 대화 내역 전송 (ChatPanel이 준비된 후)
             if (!"Lobby".equals(enterReq.getChatRoomName())) {
-                List<ChatDao.ChatMessage> history = chatService.loadChatMessages(enterReq.getChatRoomName());
-                List<ChatHistoryResponse.HistoryEntry> entries = new ArrayList<>();
-                for (ChatDao.ChatMessage msg : history) {
-                    entries.add(new ChatHistoryResponse.HistoryEntry(msg.getNickname(), msg.getSentAt(), msg.getContent()));
+                try {
+                    Thread.sleep(100); // ChatPanel 생성 대기
+                } catch (InterruptedException ie) {
+                    ie.printStackTrace();
                 }
-                sendMessage(new ChatHistoryResponse(enterReq.getChatRoomName(), entries));
+                
+                List<ChatDao.ChatMessage> history = chatService.loadChatMessages(enterReq.getChatRoomName());
+                if (!history.isEmpty()) {
+                    List<ChatHistoryResponse.HistoryEntry> entries = new ArrayList<>();
+                    for (ChatDao.ChatMessage msg : history) {
+                        entries.add(new ChatHistoryResponse.HistoryEntry(msg.getNickname(), msg.getSentAt(), msg.getContent()));
+                    }
+                    sendMessage(new ChatHistoryResponse(enterReq.getChatRoomName(), entries));
+                    System.out.println("[ENTER_CHAT] 이전 대화 " + entries.size() + "개 전송 완료 - 방: " + enterReq.getChatRoomName());
+                } else {
+                    System.out.println("[ENTER_CHAT] 이전 대화 없음 - 방: " + enterReq.getChatRoomName());
+                }
             }
 
-            System.out.println("[ENTER_CHAT] 입장 완료 - 현재 인원: " + users.size() + " (신규: " + isNewEntry + ")");
+            System.out.println("[ENTER_CHAT] 입장 완료 - 방: " + enterReq.getChatRoomName() + ", 현재 인원: " + users.size() + " (신규: " + isNewEntry + ")");
             break;
 
         case EXIT_CHAT:
@@ -249,6 +261,10 @@ public class ServerThread extends Thread {
                 List<User> remainingUsers = chatService.getChatRoomUsers(exitReq.getChatRoomName());
                 UserListResponse exitUserList = new UserListResponse(exitReq.getChatRoomName(), remainingUsers);
                 broadcastToRoom(exitReq.getChatRoomName(), exitUserList);
+            } else if (exitRoom == null) {
+                // 방이 삭제되었으면 모든 사용자에게 채팅방 목록 갱신
+                System.out.println("[자동삭제] 채팅방 목록 갱신 브로드캐스트: " + exitReq.getChatRoomName());
+                broadcastToAll(new ChatRoomListResponse(chatService.getAllChatRooms()));
             }
 
             System.out.println("[EXIT_CHAT] 퇴장 완료");
@@ -354,12 +370,12 @@ public class ServerThread extends Thread {
 
         case ADMIN_FORCE_LOGOUT:
             if (!isAdmin()) {
-                sendMessage(new AdminActionResultResponse(false, "??? ??? ?????."));
+                sendMessage(new AdminActionResultResponse(false, "관리자 권한이 없습니다."));
                 break;
             }
             AdminForceLogoutRequest forceLogoutReq = new AdminForceLogoutRequest(message, true);
-            boolean forcedLogout = handleForceLogout(forceLogoutReq.getUserId(), "???? ?? ?????????.");
-            sendMessage(new AdminActionResultResponse(forcedLogout, forcedLogout ? "???? ?????????." : "?? ???? ?? ? ????."));
+            boolean forcedLogout = handleForceLogout(forceLogoutReq.getUserId(), "관리자에 의해 로그아웃되었습니다.");
+            sendMessage(new AdminActionResultResponse(forcedLogout, forcedLogout ? "강제 로그아웃되었습니다." : "해당 사용자를 찾을 수 없습니다.")); 
             if (forcedLogout) {
                 sendAdminSnapshot();
                 broadcastToAll(new UserListResponse("Lobby", chatService.getUsers()));
@@ -368,12 +384,12 @@ public class ServerThread extends Thread {
 
         case ADMIN_FORCE_EXIT:
             if (!isAdmin()) {
-                sendMessage(new AdminActionResultResponse(false, "??? ??? ?????."));
+                sendMessage(new AdminActionResultResponse(false, "관리자 권한이 없습니다."));
                 break;
             }
             AdminForceExitRequest forceExitReq = new AdminForceExitRequest(message, true);
-            boolean forcedExit = handleForceExit(forceExitReq.getUserId(), forceExitReq.getRoomName(), "???? ?? ???????.");
-            sendMessage(new AdminActionResultResponse(forcedExit, forcedExit ? "????? ?? ???????." : "???/???? ?? ? ????."));
+            boolean forcedExit = handleForceExit(forceExitReq.getUserId(), forceExitReq.getRoomName(), "관리자에 의해 퇴장되었습니다.");
+            sendMessage(new AdminActionResultResponse(forcedExit, forcedExit ? "채팅방에서 강제 퇴장시켰습니다." : "사용자/채팅방을 찾을 수 없습니다."));
             if (forcedExit) {
                 sendAdminSnapshot();
             }
@@ -381,15 +397,15 @@ public class ServerThread extends Thread {
 
         case ADMIN_BAN:
             if (!isAdmin()) {
-                sendMessage(new AdminActionResultResponse(false, "??? ??? ?????."));
+                sendMessage(new AdminActionResultResponse(false, "관리자 권한이 없습니다."));
                 break;
             }
             AdminBanRequest banReq = new AdminBanRequest(message, true);
             boolean banUpdated = chatService.updateBanStatus(banReq.getUserId(), banReq.isBanned());
             if (banUpdated && banReq.isBanned()) {
-                handleForceLogout(banReq.getUserId(), "???? ?? ???????.");
+                handleForceLogout(banReq.getUserId(), "계정이 차단되어 로그아웃되었습니다.");
             }
-            sendMessage(new AdminActionResultResponse(banUpdated, banUpdated ? (banReq.isBanned() ? "???? ??????." : "??? ??? ??????.") : "?? ?? ??? ??????."));
+            sendMessage(new AdminActionResultResponse(banUpdated, banUpdated ? (banReq.isBanned() ? "사용자가 차단되었습니다." : "차단이 해제되었습니다.") : "차단 상태 변경에 실패했습니다."));
             if (banUpdated) {
                 sendAdminSnapshot();
                 broadcastToAll(new UserListResponse("Lobby", chatService.getUsers()));
@@ -407,25 +423,26 @@ public class ServerThread extends Thread {
 
         case ADMIN_MESSAGE_DELETE:
             if (!isAdmin()) {
-                sendMessage(new AdminActionResultResponse(false, "??? ??? ?????."));
+                sendMessage(new AdminActionResultResponse(false, "관리자 권한이 없습니다."));
                 break;
             }
             AdminMessageDeleteRequest deleteReq = new AdminMessageDeleteRequest(message, true);
             boolean deleted = chatService.deleteMessage(deleteReq.getMessageId());
-            sendMessage(new AdminActionResultResponse(deleted, deleted ? "???? ??????." : "??? ??? ??????."));
+            sendMessage(new AdminActionResultResponse(deleted, deleted ? "메시지가 삭제되었습니다." : "메시지 삭제에 실패했습니다."));
+            System.out.println("[ADMIN] 메시지 삭제: ID=" + deleteReq.getMessageId() + ", 결과=" + deleted);
             break;
 
         case ADMIN_ROOM_DELETE:
             if (!isAdmin()) {
-                sendMessage(new AdminActionResultResponse(false, "??? ??? ?????."));
+                sendMessage(new AdminActionResultResponse(false, "관리자 권한이 없습니다."));
                 break;
             }
             AdminRoomDeleteRequest roomDeleteReq = new AdminRoomDeleteRequest(message, true);
             boolean roomDeleted = handleRoomDeletion(roomDeleteReq.getRoomName());
             if (roomDeleted) {
-                sendMessage(new AdminActionResultResponse(true, "???? ??????."));
+                sendMessage(new AdminActionResultResponse(true, "채팅방이 삭제되었습니다."));
             } else {
-                sendMessage(new AdminActionResultResponse(false, "??? ??? ??????."));
+                sendMessage(new AdminActionResultResponse(false, "채팅방 삭제에 실패했습니다."));
             }
             break;
 

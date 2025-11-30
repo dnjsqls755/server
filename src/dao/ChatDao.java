@@ -176,33 +176,33 @@ public class ChatDao {
     // 채팅방의 이전 메시지 불러오기 (시간 포함)
     public List<ChatMessage> loadMessages(String roomName, int limit) {
         List<ChatMessage> messages = new ArrayList<>();
-        String sql = "SELECT CASE " +
-                     "         WHEN EXISTS (SELECT 1 FROM ChatRoomUsers cu2 WHERE cu2.room_id = m.room_id AND cu2.user_id = u.user_id) " +
-                     "              THEN u.nickname ELSE '(알수없음)' END AS nickname, " +
-                     "       m.content, TO_CHAR(m.sent_at, 'HH24:MI') as sent_time " +
+        // 최근 100개(요청 limit) 메시지 그대로 가져와 시간 표시 (닉네임 항상 표시)
+        String sql = "SELECT u.nickname, m.content, TO_CHAR(m.sent_at,'HH24:MI') AS sent_time " +
                      "FROM Messages m " +
                      "JOIN ChatRooms r ON m.room_id = r.room_id " +
                      "JOIN users u ON m.sender_id = u.user_id " +
                      "WHERE r.room_name = ? " +
-                     "ORDER BY m.sent_at ASC " +
-                     "FETCH FIRST ? ROWS ONLY";
-        
+                     "ORDER BY m.sent_at DESC FETCH FIRST ? ROWS ONLY";
+
         try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
             pstmt.setString(1, roomName);
             pstmt.setInt(2, limit);
             ResultSet rs = pstmt.executeQuery();
-            
             while (rs.next()) {
                 messages.add(new ChatMessage(
-                    rs.getString("nickname"),
-                    rs.getString("content"),
-                    rs.getString("sent_time")
+                        rs.getString("nickname"),
+                        rs.getString("content"),
+                        rs.getString("sent_time")
                 ));
             }
+            System.out.println("[DB] 최근 메시지 로드 완료 - 방:" + roomName + ", 개수:" + messages.size());
         } catch (SQLException e) {
+            System.err.println("[DB ERROR] 최근 메시지 로드 실패: " + e.getMessage());
             e.printStackTrace();
         }
-        
+
+        // 최신순으로 가져왔으니 UI에 과거->현재 순으로 보여주려면 역순 정렬
+        java.util.Collections.reverse(messages);
         return messages;
     }
 

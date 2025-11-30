@@ -197,6 +197,12 @@ public class ChatService {
             if (user != null) {
                 room.getUsers().remove(user);
                 chatDao.removeUserFromChatRoom(roomName, userId);
+                
+                // 빈 채팅방 자동 삭제 (로비 제외)
+                if (!"Lobby".equals(roomName) && room.getUsers().isEmpty()) {
+                    System.out.println("[자동삭제] 빈 채팅방 삭제: " + roomName);
+                    chatDao.deleteChatRoom(roomName);
+                }
             }
 
             return user;
