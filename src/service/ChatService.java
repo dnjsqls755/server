@@ -374,4 +374,19 @@ public class ChatService {
     public boolean deleteMessage(long messageId) {
         return chatDao.deleteMessage(messageId);
     }
+
+    // 아이디 찾기: 이름과 이메일로 사용자 ID 조회
+    public String findUserIdByNameAndEmail(String name, String email) {
+        return chatDao.findUserIdByNameAndEmail(name, email);
+    }
+
+    // 비밀번호 찾기: 아이디와 이메일로 사용자 확인
+    public boolean verifyUserForPasswordReset(String userId, String email) {
+        return chatDao.verifyUserByIdAndEmail(userId, email);
+    }
+
+    // 비밀번호 재설정
+    public boolean updatePassword(String userId, String newPassword) {
+        return chatDao.updatePassword(userId, newPassword);
+    }
 }

@@ -501,6 +501,48 @@ public class ServerThread extends Thread {
             }
             break;
 
+        case FIND_ID:
+            FindIdRequest findIdReq = new FindIdRequest(message);
+            System.out.println("[FIND_ID] 아이디 찾기 요청 - 이름: " + findIdReq.getName() + ", 이메일: " + findIdReq.getEmail());
+            
+            String foundUserId = chatService.findUserIdByNameAndEmail(findIdReq.getName(), findIdReq.getEmail());
+            if (foundUserId != null) {
+                sendMessage(new FindIdResponse(true, foundUserId, "아이디를 찾았습니다."));
+                System.out.println("[FIND_ID] 아이디 찾기 성공 - " + foundUserId);
+            } else {
+                sendMessage(new FindIdResponse(false, null, "일치하는 회원 정보가 없습니다."));
+                System.out.println("[FIND_ID] 아이디 찾기 실패 - 일치하는 정보 없음");
+            }
+            break;
+
+        case FIND_PASSWORD:
+            FindPasswordRequest findPwReq = new FindPasswordRequest(message);
+            System.out.println("[FIND_PASSWORD] 비밀번호 찾기 요청 - ID: " + findPwReq.getId() + ", 이메일: " + findPwReq.getEmail());
+            
+            boolean verified = chatService.verifyUserForPasswordReset(findPwReq.getId(), findPwReq.getEmail());
+            if (verified) {
+                sendMessage(new FindPasswordResponse(true, "본인 확인이 완료되었습니다."));
+                System.out.println("[FIND_PASSWORD] 본인 확인 성공");
+            } else {
+                sendMessage(new FindPasswordResponse(false, "아이디 또는 이메일이 일치하지 않습니다."));
+                System.out.println("[FIND_PASSWORD] 본인 확인 실패");
+            }
+            break;
+
+        case RESET_PASSWORD:
+            ResetPasswordRequest resetPwReq = new ResetPasswordRequest(message);
+            System.out.println("[RESET_PASSWORD] 비밀번호 재설정 요청 - ID: " + resetPwReq.getId());
+            
+            boolean updated = chatService.updatePassword(resetPwReq.getId(), resetPwReq.getNewPassword());
+            if (updated) {
+                sendMessage(new ResetPasswordResponse(true, "비밀번호가 성공적으로 변경되었습니다."));
+                System.out.println("[RESET_PASSWORD] 비밀번호 재설정 성공");
+            } else {
+                sendMessage(new ResetPasswordResponse(false, "비밀번호 변경에 실패했습니다."));
+                System.out.println("[RESET_PASSWORD] 비밀번호 재설정 실패");
+            }
+            break;
+
         case USER_LIST:
         case CHAT_ROOM_LIST:
             System.out.println("?? ???? ?? ??: " + type);

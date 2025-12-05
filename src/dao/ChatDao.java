@@ -491,4 +491,50 @@ public class ChatDao {
         public String getContent() { return content; }
         public String getSentAt() { return sentAt; }
     }
+
+    // 아이디 찾기: 이름과 이메일로 사용자 ID 조회
+    public String findUserIdByNameAndEmail(String name, String email) {
+        String sql = "SELECT user_id FROM Users WHERE name = ? AND email = ?";
+        try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
+            pstmt.setString(1, name);
+            pstmt.setString(2, email);
+            ResultSet rs = pstmt.executeQuery();
+            if (rs.next()) {
+                return rs.getString("user_id");
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return null;
+    }
+
+    // 비밀번호 찾기: 아이디와 이메일로 사용자 확인
+    public boolean verifyUserByIdAndEmail(String userId, String email) {
+        String sql = "SELECT COUNT(*) FROM Users WHERE user_id = ? AND email = ?";
+        try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
+            pstmt.setString(1, userId);
+            pstmt.setString(2, email);
+            ResultSet rs = pstmt.executeQuery();
+            if (rs.next()) {
+                return rs.getInt(1) > 0;
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return false;
+    }
+
+    // 비밀번호 재설정
+    public boolean updatePassword(String userId, String newPassword) {
+        String sql = "UPDATE Users SET password = ? WHERE user_id = ?";
+        try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
+            pstmt.setString(1, newPassword);
+            pstmt.setString(2, userId);
+            int rows = pstmt.executeUpdate();
+            return rows > 0;
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return false;
+    }
 }
