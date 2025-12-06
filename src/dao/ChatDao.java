@@ -537,4 +537,73 @@ public class ChatDao {
         }
         return false;
     }
+
+    // 사용자 정보 수정 (관리자용)
+    public boolean updateUserInfo(String userId, String nickname, String email, String phone,
+                                   String address, String detailAddress, String postalCode,
+                                   String gender, String birthDate) {
+        String sql = "UPDATE Users SET nickname = ?, email = ?, phone = ?, address = ?, " +
+                     "detail_address = ?, postal_code = ?, gender = ?, birth_date = ? WHERE user_id = ?";
+        try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
+            pstmt.setString(1, nickname);
+            pstmt.setString(2, email);
+            pstmt.setString(3, phone);
+            pstmt.setString(4, address);
+            pstmt.setString(5, detailAddress);
+            pstmt.setString(6, postalCode);
+            pstmt.setString(7, gender);
+            
+            // 생년월일 처리
+            if (birthDate != null && !birthDate.trim().isEmpty()) {
+                try {
+                    pstmt.setDate(8, java.sql.Date.valueOf(birthDate));
+                } catch (IllegalArgumentException e) {
+                    pstmt.setDate(8, null);
+                }
+            } else {
+                pstmt.setDate(8, null);
+            }
+            
+            pstmt.setString(9, userId);
+            int rows = pstmt.executeUpdate();
+            
+            // 메모리상 사용자 객체도 업데이트
+            if (rows > 0) {
+                User u = getUser(userId).orElse(null);
+                if (u != null) {
+                    u.setNickName(nickname);
+                }
+            }
+            
+            return rows > 0;
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return false;
+    }
+
+    // DB에서 사용자 전체 정보 조회
+    public String[] getUserFullInfo(String userId) {
+        String sql = "SELECT nickname, email, phone, address, detail_address, postal_code, gender, " +
+                     "TO_CHAR(birth_date, 'YYYY-MM-DD') AS birth_date FROM Users WHERE user_id = ?";
+        try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
+            pstmt.setString(1, userId);
+            ResultSet rs = pstmt.executeQuery();
+            if (rs.next()) {
+                return new String[]{
+                    rs.getString("nickname") != null ? rs.getString("nickname") : "",
+                    rs.getString("email") != null ? rs.getString("email") : "",
+                    rs.getString("phone") != null ? rs.getString("phone") : "",
+                    rs.getString("address") != null ? rs.getString("address") : "",
+                    rs.getString("detail_address") != null ? rs.getString("detail_address") : "",
+                    rs.getString("postal_code") != null ? rs.getString("postal_code") : "",
+                    rs.getString("gender") != null ? rs.getString("gender") : "",
+                    rs.getString("birth_date") != null ? rs.getString("birth_date") : ""
+                };
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return new String[]{"", "", "", "", "", "", "", ""};
+    }
 }

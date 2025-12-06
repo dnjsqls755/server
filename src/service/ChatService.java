@@ -389,4 +389,14 @@ public class ChatService {
     public boolean updatePassword(String userId, String newPassword) {
         return chatDao.updatePassword(userId, newPassword);
     }
+
+    public boolean updateUserInfo(String userId, String nickname, String email, String phone,
+                                   String address, String detailAddress, String postalCode,
+                                   String gender, String birthDate) {
+        return chatDao.updateUserInfo(userId, nickname, email, phone, address, detailAddress, postalCode, gender, birthDate);
+    }
+
+    public String[] getUserFullInfo(String userId) {
+        return chatDao.getUserFullInfo(userId);
+    }
 }

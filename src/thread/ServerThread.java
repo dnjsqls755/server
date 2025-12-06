@@ -467,6 +467,34 @@ public class ServerThread extends Thread {
             }
             break;
 
+        case ADMIN_USER_UPDATE:
+            if (!isAdmin()) {
+                sendMessage(new AdminActionResultResponse(false, "관리자 권한이 없습니다."));
+                break;
+            }
+            AdminUserUpdateRequest updateReq = new AdminUserUpdateRequest(message);
+            boolean userUpdated = chatService.updateUserInfo(updateReq.getUserId(), updateReq.getNickname(), 
+                                                             updateReq.getEmail(), updateReq.getPhone(),
+                                                             updateReq.getAddress(), updateReq.getDetailAddress(),
+                                                             updateReq.getPostalCode(), updateReq.getGender(),
+                                                             updateReq.getBirthDate());
+            sendMessage(new AdminActionResultResponse(userUpdated, userUpdated ? "사용자 정보가 수정되었습니다." : "사용자 정보 수정에 실패했습니다."));
+            if (userUpdated) {
+                sendAdminSnapshot();
+            }
+            break;
+
+        case ADMIN_USER_INFO:
+            if (!isAdmin()) {
+                sendMessage(new AdminActionResultResponse(false, "관리자 권한이 없습니다."));
+                break;
+            }
+            AdminUserInfoRequest infoReq = new AdminUserInfoRequest(message);
+            String[] userInfo = chatService.getUserFullInfo(infoReq.getUserId());
+            sendMessage(new AdminUserInfoResponse(infoReq.getUserId(), userInfo[0], userInfo[1], userInfo[2],
+                                                   userInfo[3], userInfo[4], userInfo[5], userInfo[6], userInfo[7]));
+            break;
+
         case ADMIN_MESSAGE_SEARCH:
             if (!isAdmin()) {
                 sendMessage(new AdminActionResultResponse(false, "??? ??? ?????."));
