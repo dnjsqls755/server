@@ -149,6 +149,10 @@ public class ChatService {
         return chatDao.getUser(userId).orElse(null);
     }
 
+    public User getUserByNickname(String nickname) {
+        return chatDao.findUserByNickname(nickname).orElse(null);
+    }
+
     public ChatRoom createChatRoom(String roomName, String creatorId) {
         try {
             if (chatDao.findChatRoomByName(roomName).isPresent()) {

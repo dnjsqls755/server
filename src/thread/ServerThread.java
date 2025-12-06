@@ -599,6 +599,84 @@ public class ServerThread extends Thread {
             System.out.println("?? ???? ?? ??: " + type);
             break;
 
+        case CHAT_ROOM_INVITE:
+            ChatRoomInviteRequest inviteReq = new ChatRoomInviteRequest(message);
+            System.out.println("[CHAT_ROOM_INVITE] 채팅방 초대 요청 - 방: " + inviteReq.getRoomName() + ", 대상: " + inviteReq.getTargetNickname() + ", 발신자: " + inviteReq.getSenderUserId());
+            
+            // 채팅방 존재 확인
+            ChatRoom targetRoom = chatService.getChatRoom(inviteReq.getRoomName());
+            if (targetRoom == null) {
+                sendMessage(new ChatRoomInviteResultResponse("채팅방을 찾을 수 없습니다.", false));
+                break;
+            }
+            
+            // 1:1 채팅방은 초대 불가 (DM- 접두사 확인)
+            if (targetRoom.getName().startsWith("DM-")) {
+                sendMessage(new ChatRoomInviteResultResponse("1:1 채팅방은 초대할 수 없습니다.", false));
+                break;
+            }
+            
+            // 대상 사용자 조회
+            User targetUser = chatService.getUserByNickname(inviteReq.getTargetNickname());
+            if (targetUser == null) {
+                sendMessage(new ChatRoomInviteResultResponse("사용자를 찾을 수 없습니다.", false));
+                break;
+            }
+            
+            // 이미 방에 입장한 사용자인지 확인
+            boolean alreadyInRoom = targetRoom.getUsers().stream()
+                    .anyMatch(u -> u.getId().equals(targetUser.getId()));
+            if (alreadyInRoom) {
+                sendMessage(new ChatRoomInviteResultResponse("이미 채팅방에 참여 중인 사용자입니다.", false));
+                break;
+            }
+            
+            // 초대 대상에게 초대 알림 전송
+            User senderUser = chatService.getUser(inviteReq.getSenderUserId());
+            if (senderUser != null) {
+                ChatRoomInviteResponse inviteNotification = new ChatRoomInviteResponse(
+                        inviteReq.getRoomName(),
+                        inviteReq.getSenderUserId(),
+                        senderUser.getNickName()
+                );
+                sendMessageToUser(targetUser, inviteNotification);
+                sendMessage(new ChatRoomInviteResultResponse("초대를 보냈습니다.", true));
+                System.out.println("[CHAT_ROOM_INVITE] 초대 완료 - 방: " + inviteReq.getRoomName() + ", 대상: " + inviteReq.getTargetNickname());
+            } else {
+                sendMessage(new ChatRoomInviteResultResponse("발신자를 찾을 수 없습니다.", false));
+            }
+            break;
+
+        case CHAT_ROOM_INVITE_ACCEPT:
+            ChatRoomInviteAcceptRequest acceptReq = new ChatRoomInviteAcceptRequest(message);
+            System.out.println("[CHAT_ROOM_INVITE_ACCEPT] 초대 수락 - 방: " + acceptReq.getRoomName() + ", 사용자: " + acceptReq.getUserId());
+            
+            // 채팅방 입장 처리
+            boolean enterSuccess = chatService.enterChatRoom(acceptReq.getRoomName(), acceptReq.getUserId());
+            if (enterSuccess) {
+                // 해당 채팅방의 모든 사용자에게 사용자 목록 업데이트
+                List<User> updatedUsers = chatService.getChatRoomUsers(acceptReq.getRoomName());
+                UserListResponse updateUserList = new UserListResponse(acceptReq.getRoomName(), updatedUsers);
+                broadcastToRoom(acceptReq.getRoomName(), updateUserList);
+                
+                // 입장 메시지 브로드캐스트
+                User acceptedUser = chatService.getUser(acceptReq.getUserId());
+                if (acceptedUser != null) {
+                    MessageResponse enterMsg = new MessageResponse(
+                            MessageType.ENTER,
+                            acceptReq.getRoomName(),
+                            acceptedUser.getNickName(),
+                            acceptedUser.getNickName() + "님이 입장하셨습니다."
+                    );
+                    broadcastToRoom(acceptReq.getRoomName(), enterMsg);
+                }
+                
+                System.out.println("[CHAT_ROOM_INVITE_ACCEPT] 입장 완료 - 방: " + acceptReq.getRoomName() + ", 사용자: " + acceptReq.getUserId());
+            } else {
+                System.out.println("[CHAT_ROOM_INVITE_ACCEPT] 입장 실패 - 방: " + acceptReq.getRoomName() + ", 사용자: " + acceptReq.getUserId());
+            }
+            break;
+
         default:
             System.out.println("???? ?? ??? ??: " + type);
             break;
