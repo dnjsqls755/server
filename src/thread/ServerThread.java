@@ -93,8 +93,20 @@ public class ServerThread extends Thread {
             chatService.addUser(user);
             currentUser = user;
 
-            List<ChatRoom> dbChatRooms = chatService.getAllChatRooms();
-            sendMessage(new InitDataResponse(dbChatRooms, chatService.getUsers()));
+            // 모든 채팅방 가져오기
+            List<ChatRoom> allChatRooms = chatService.getAllChatRooms();
+            
+            // 사용자에게 표시할 채팅방 필터링 (일반 채팅방 + 본인이 포함된 1:1 채팅방)
+            List<ChatRoom> userChatRooms = new ArrayList<>();
+            for (ChatRoom room : allChatRooms) {
+                String roomName = room.getName();
+                // 일반 채팅방이거나, 본인 ID가 포함된 1:1 채팅방만 추가
+                if (!roomName.startsWith("DM-") || roomName.contains(user.getId())) {
+                    userChatRooms.add(room);
+                }
+            }
+            
+            sendMessage(new InitDataResponse(userChatRooms, chatService.getUsers()));
 
             sendMessage(new FriendListResponse(chatService.getFriends(user.getId())));
 
@@ -190,7 +202,12 @@ public class ServerThread extends Thread {
             if (newRoom != null) {
                 chatService.enterChatRoom(newRoom.getName(), createReq.getUserId());
                 CreateChatRoomResponse createRes = new CreateChatRoomResponse(newRoom);
-                broadcastToAll(createRes);
+                
+                // 1:1 채팅방이 아닌 경우에만 전체 브로드캐스트
+                if (!newRoom.getName().startsWith("DM-")) {
+                    broadcastToAll(createRes);
+                }
+                // 1:1 채팅방인 경우 해당 사용자들에게만 전송은 FRIEND_CHAT_START에서 처리됨
 
                 List<User> roomUsers = chatService.getChatRoomUsers(newRoom.getName());
                 UserListResponse userListRes = new UserListResponse(newRoom.getName(), roomUsers);
@@ -342,9 +359,15 @@ public class ServerThread extends Thread {
             if (directRoom != null) {
                 chatService.enterChatRoom(roomName, chatStartReq.getUserId());
 
+                // 1:1 채팅방 생성 시 당사자들에게만 알림
                 if (createdNew) {
                     CreateChatRoomResponse createRes = new CreateChatRoomResponse(directRoom);
-                    broadcastToAll(createRes);
+                    sendMessage(createRes); // 생성자에게 전송
+                    
+                    User friendUser = chatService.getUser(chatStartReq.getFriendId());
+                    if (friendUser != null) {
+                        sendMessageToUser(friendUser, createRes); // 친구에게도 전송
+                    }
                 }
 
                 String inviterNickname = chatService.findNicknameByUserId(chatStartReq.getUserId());
