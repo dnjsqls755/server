@@ -3,6 +3,7 @@ package dto.response;
 import dto.type.DtoType;
 
 public class AdminUserInfoResponse extends DTO {
+    private final String name;
     private final String userId;
     private final String nickname;
     private final String email;
@@ -13,10 +14,11 @@ public class AdminUserInfoResponse extends DTO {
     private final String gender;
     private final String birthDate;
 
-    public AdminUserInfoResponse(String userId, String nickname, String email, String phone,
+    public AdminUserInfoResponse(String name, String userId, String nickname, String email, String phone,
                                   String address, String detailAddress, String postalCode,
                                   String gender, String birthDate) {
         super(DtoType.ADMIN_USER_INFO_RESULT);
+        this.name = name;
         this.userId = userId;
         this.nickname = nickname;
         this.email = email;
@@ -30,7 +32,7 @@ public class AdminUserInfoResponse extends DTO {
 
     @Override
     public String toString() {
-        return super.toString() + userId + "|" + nickname + "|" + email + "|" + phone + "|" + 
+        return super.toString() + name + "|" + userId + "|" + nickname + "|" + email + "|" + phone + "|" + 
                address + "|" + detailAddress + "|" + postalCode + "|" + gender + "|" + birthDate;
     }
 }

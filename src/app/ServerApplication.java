@@ -39,19 +39,20 @@ public class ServerApplication {
             chatService = new ChatService(chatDao);
             
 
-            // 4. 서버 소켓 설정
-            ServerSocket serverSocket = new ServerSocket(9000);
-            System.out.println("서버 시작됨. 포트 9000");
+            // 4. 서버 소켓 설정 (try-with-resources로 안전하게 관리)
+            try (ServerSocket serverSocket = new ServerSocket(9000)) {
+                System.out.println("서버 시작됨. 포트 9000");
 
-            while (true) {
-                System.out.println("접속 대기중...");
-                Socket clientSocket = serverSocket.accept();
-                System.out.println("client IP: " + clientSocket.getInetAddress() + " Port: " + clientSocket.getPort());
+                while (true) {
+                    System.out.println("접속 대기중...");
+                    Socket clientSocket = serverSocket.accept();
+                    System.out.println("client IP: " + clientSocket.getInetAddress() + " Port: " + clientSocket.getPort());
 
-                sockets.add(clientSocket);
+                    sockets.add(clientSocket);
 
-                ServerThread thread = new ServerThread(clientSocket, chatService);
-                thread.start();
+                    ServerThread thread = new ServerThread(clientSocket, chatService);
+                    thread.start();
+                }
             }
 
         } catch (ClassNotFoundException e) {

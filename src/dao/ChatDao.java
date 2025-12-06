@@ -137,10 +137,100 @@ public class ChatDao {
         return connection;
     }
 
+    // 관리자용 사용자 상세 조회
+    public AdminUserDetails getUserDetails(String userId) {
+        String sql = "SELECT name, nickname, email, phone, address, detail_address, postal_code, gender, birth_date " +
+                     "FROM users WHERE user_id = ?";
+        try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
+            pstmt.setString(1, userId);
+            ResultSet rs = pstmt.executeQuery();
+            if (rs.next()) {
+                return new AdminUserDetails(
+                        rs.getString("name"),
+                        rs.getString("nickname"),
+                        rs.getString("email"),
+                        rs.getString("phone"),
+                        rs.getString("address"),
+                        rs.getString("detail_address"),
+                        rs.getString("postal_code"),
+                        rs.getString("gender"),
+                        rs.getString("birth_date")
+                );
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return null;
+    }
+
+    // 관리자용 사용자 정보 업데이트 (이름 포함)
+    public boolean updateUserInfo(String userId, String name, String nickname, String email, String phone,
+                                  String address, String detailAddress, String postalCode,
+                                  String gender, String birthDate) {
+        String sql = "UPDATE users SET name = ?, nickname = ?, email = ?, phone = ?, address = ?, " +
+                     "detail_address = ?, postal_code = ?, gender = ?, birth_date = ? WHERE user_id = ?";
+        try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
+            pstmt.setString(1, name);
+            pstmt.setString(2, nickname);
+            pstmt.setString(3, email);
+            pstmt.setString(4, phone);
+            pstmt.setString(5, address);
+            pstmt.setString(6, detailAddress);
+            pstmt.setString(7, postalCode);
+            pstmt.setString(8, gender);
+            
+            // 생년월일 처리
+            if (birthDate != null && !birthDate.trim().isEmpty()) {
+                try {
+                    pstmt.setDate(9, java.sql.Date.valueOf(birthDate));
+                } catch (IllegalArgumentException e) {
+                    System.err.println("[UPDATE] 생년월일 형식 오류: " + birthDate);
+                    pstmt.setDate(9, null);
+                }
+            } else {
+                pstmt.setDate(9, null);
+            }
+            
+            pstmt.setString(10, userId);
+            int rows = pstmt.executeUpdate();
+            System.out.println("[UPDATE] 사용자 정보 업데이트 - userId: " + userId + ", rows: " + rows);
+            return rows > 0;
+        } catch (SQLException e) {
+            System.err.println("[UPDATE ERROR] 사용자 정보 업데이트 실패 - userId: " + userId);
+            e.printStackTrace();
+            return false;
+        }
+    }
+
     public void refreshChatRoomsFromDb() {
         List<ChatRoom> rooms = findAllChatRoomsExceptLobby();
         chatRooms.clear();
         chatRooms.addAll(rooms);
+    }
+
+    public static class AdminUserDetails {
+        public final String name;
+        public final String nickname;
+        public final String email;
+        public final String phone;
+        public final String address;
+        public final String detailAddress;
+        public final String postalCode;
+        public final String gender;
+        public final String birthDate;
+
+        public AdminUserDetails(String name, String nickname, String email, String phone, String address,
+                                String detailAddress, String postalCode, String gender, String birthDate) {
+            this.name = name;
+            this.nickname = nickname;
+            this.email = email;
+            this.phone = phone;
+            this.address = address;
+            this.detailAddress = detailAddress;
+            this.postalCode = postalCode;
+            this.gender = gender;
+            this.birthDate = birthDate;
+        }
     }
 
     public void saveMessage(String chatRoomName, String senderId, String content) {
@@ -564,51 +654,6 @@ public class ChatDao {
         }
         return false;
     }
-
-    // 사용자 정보 수정 (관리자용)
-    public boolean updateUserInfo(String userId, String nickname, String email, String phone,
-                                   String address, String detailAddress, String postalCode,
-                                   String gender, String birthDate) {
-        String sql = "UPDATE Users SET nickname = ?, email = ?, phone = ?, address = ?, " +
-                     "detail_address = ?, postal_code = ?, gender = ?, birth_date = ? WHERE user_id = ?";
-        try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
-            pstmt.setString(1, nickname);
-            pstmt.setString(2, email);
-            pstmt.setString(3, phone);
-            pstmt.setString(4, address);
-            pstmt.setString(5, detailAddress);
-            pstmt.setString(6, postalCode);
-            pstmt.setString(7, gender);
-            
-            // 생년월일 처리
-            if (birthDate != null && !birthDate.trim().isEmpty()) {
-                try {
-                    pstmt.setDate(8, java.sql.Date.valueOf(birthDate));
-                } catch (IllegalArgumentException e) {
-                    pstmt.setDate(8, null);
-                }
-            } else {
-                pstmt.setDate(8, null);
-            }
-            
-            pstmt.setString(9, userId);
-            int rows = pstmt.executeUpdate();
-            
-            // 메모리상 사용자 객체도 업데이트
-            if (rows > 0) {
-                User u = getUser(userId).orElse(null);
-                if (u != null) {
-                    u.setNickName(nickname);
-                }
-            }
-            
-            return rows > 0;
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
-        return false;
-    }
-
     // DB에서 사용자 전체 정보 조회
     public String[] getUserFullInfo(String userId) {
         String sql = "SELECT nickname, email, phone, address, detail_address, postal_code, gender, " +

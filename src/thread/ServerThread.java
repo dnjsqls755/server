@@ -299,22 +299,62 @@ public class ServerThread extends Thread {
             System.out.println("[EXIT_CHAT] 퇴장 완료");
             break;
 
-        case MESSAGE:
-            MessageResponse chatMsg = new MessageResponse(message);
-            System.out.println("[MESSAGE] 메시지 수신 - 방 " + chatMsg.getChatRoomName() + ", 발신자 " + chatMsg.getUserName() + ", 내용: " + chatMsg.getMessage());
+        case MESSAGE: {
+            MessageRequest msgReq = new MessageRequest(message);
+            MessageType mt = msgReq.getMessageType();
+            String room = msgReq.getChatRoomName();
+            String userField = msgReq.getUserName();
+            String content = msgReq.getMessage();
 
-            if (chatMsg.getMessageType() == MessageType.CHAT && !"Lobby".equals(chatMsg.getChatRoomName())) {
-                chatService.saveChatMessage(chatMsg.getChatRoomName(), chatMsg.getUserName(), chatMsg.getMessage());
-            }
+            if (mt == MessageType.WHISPER) {
+                String[] parts = userField.split(",", 2);
+                String from = parts.length > 0 ? parts[0].trim() : "";
+                String to = parts.length > 1 ? parts[1].trim() : "";
 
-            if ("Lobby".equals(chatMsg.getChatRoomName())) {
-                broadcastToAll(chatMsg);
+                List<User> roomUsers = chatService.getChatRoomUsers(room);
+                boolean sentToTarget = false;
+                boolean sentToSender = false;
+
+                for (User u : roomUsers) {
+                    String nick = u.getNickName();
+                    if (nick.equals(to)) {
+                        sendMessageToUser(u, new MessageResponse(MessageType.WHISPER, room, from + "," + to, content));
+                        sentToTarget = true;
+                    }
+                    if (nick.equals(from)) {
+                        sendMessageToUser(u, new MessageResponse(MessageType.WHISPER, room, from + "," + to, content));
+                        sentToSender = true;
+                    }
+                }
+
+                // 귓속말이 실패한 경우 발신자에게만 알림
+                if (!sentToTarget && sentToSender) {
+                    User senderUser = chatService.getUserByNickname(from);
+                    if (senderUser != null) {
+                        sendMessageToUser(senderUser,
+                                new MessageResponse(MessageType.WHISPER, room, from + "," + to,
+                                        "[안내] 대상 사용자를 찾을 수 없습니다."));
+                    }
+                }
+
+                System.out.println("[WHISPER] " + from + " → " + to + " @" + room + " : " + content + " (toSent=" + sentToTarget + ")");
             } else {
-                broadcastToRoom(chatMsg.getChatRoomName(), chatMsg);
-            }
+                MessageResponse chatMsg = new MessageResponse(mt, room, userField, content);
+                System.out.println("[MESSAGE] 메시지 수신 - 방 " + room + ", 발신자 " + userField + ", 내용: " + content);
 
-            System.out.println("[MESSAGE] 메시지 전송 완료");
+                if (mt == MessageType.CHAT && !"Lobby".equals(room)) {
+                    chatService.saveChatMessage(room, userField, content);
+                }
+
+                if ("Lobby".equals(room)) {
+                    broadcastToAll(chatMsg);
+                } else {
+                    broadcastToRoom(room, chatMsg);
+                }
+                System.out.println("[MESSAGE] 메시지 전송 완료");
+            }
             break;
+        }
 
         case FRIEND_ADD:
             FriendAddRequest addReq = new FriendAddRequest(message);
@@ -496,7 +536,7 @@ public class ServerThread extends Thread {
                 break;
             }
             AdminUserUpdateRequest updateReq = new AdminUserUpdateRequest(message);
-            boolean userUpdated = chatService.updateUserInfo(updateReq.getUserId(), updateReq.getNickname(), 
+            boolean userUpdated = chatService.updateUserInfo(updateReq.getUserId(), updateReq.getName(), updateReq.getNickname(), 
                                                              updateReq.getEmail(), updateReq.getPhone(),
                                                              updateReq.getAddress(), updateReq.getDetailAddress(),
                                                              updateReq.getPostalCode(), updateReq.getGender(),
@@ -513,9 +553,14 @@ public class ServerThread extends Thread {
                 break;
             }
             AdminUserInfoRequest infoReq = new AdminUserInfoRequest(message);
-            String[] userInfo = chatService.getUserFullInfo(infoReq.getUserId());
-            sendMessage(new AdminUserInfoResponse(infoReq.getUserId(), userInfo[0], userInfo[1], userInfo[2],
-                                                   userInfo[3], userInfo[4], userInfo[5], userInfo[6], userInfo[7]));
+            ChatDao.AdminUserDetails details = chatService.getAdminUserDetails(infoReq.getUserId());
+            if (details != null) {
+                sendMessage(new AdminUserInfoResponse(details.name, infoReq.getUserId(), details.nickname, details.email,
+                                                       details.phone, details.address, details.detailAddress, details.postalCode,
+                                                       details.gender, details.birthDate));
+            } else {
+                sendMessage(new AdminActionResultResponse(false, "사용자 정보를 찾을 수 없습니다."));
+            }
             break;
 
         case ADMIN_MESSAGE_SEARCH:

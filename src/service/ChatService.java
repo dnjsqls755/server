@@ -344,7 +344,16 @@ public class ChatService {
     }
 
     public List<ChatDao.ChatMessage> loadChatMessages(String roomName) {
-        return chatDao.loadMessages(roomName, 100);
+        List<ChatDao.ChatMessage> raw = chatDao.loadMessages(roomName, 100);
+        List<ChatDao.ChatMessage> filtered = new ArrayList<>();
+        for (ChatDao.ChatMessage msg : raw) {
+            // 귓속말은 히스토리에서 제외 (내용 prefix로 식별)
+            if (msg.getContent() != null && msg.getContent().startsWith("[WHISPER")) {
+                continue;
+            }
+            filtered.add(msg);
+        }
+        return filtered;
     }
 
     public List<User> getAllUsersWithStatus() {
@@ -398,10 +407,22 @@ public class ChatService {
         return chatDao.updatePassword(userId, newPassword);
     }
 
-    public boolean updateUserInfo(String userId, String nickname, String email, String phone,
+    public ChatDao.AdminUserDetails getAdminUserDetails(String userId) {
+        return chatDao.getUserDetails(userId);
+    }
+
+    public boolean updateUserInfo(String userId, String name, String nickname, String email, String phone,
                                    String address, String detailAddress, String postalCode,
                                    String gender, String birthDate) {
-        return chatDao.updateUserInfo(userId, nickname, email, phone, address, detailAddress, postalCode, gender, birthDate);
+        boolean ok = chatDao.updateUserInfo(userId, name, nickname, email, phone, address, detailAddress, postalCode, gender, birthDate);
+        if (ok) {
+            // メモリ使用者オブジェクト ニックネーム同期
+            User me = chatDao.getUser(userId).orElse(null);
+            if (me != null) {
+                me.setNickName(nickname);
+            }
+        }
+        return ok;
     }
 
     public String[] getUserFullInfo(String userId) {
