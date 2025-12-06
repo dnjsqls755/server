@@ -527,6 +527,16 @@ public class ServerThread extends Thread {
             sendMessage(new AdminMessageSearchResponse(chatService.searchMessages(searchReq.getNickname(), searchReq.getRoomName())));
             break;
 
+        case ADMIN_ROOM_MEMBERS:
+            if (!isAdmin()) {
+                sendMessage(new AdminActionResultResponse(false, "관리자 권한이 없습니다."));
+                break;
+            }
+            AdminRoomMembersRequest membersReq = new AdminRoomMembersRequest(message, true);
+            List<User> members = chatService.getRoomMembers(membersReq.getRoomName());
+            sendMessage(new AdminRoomMembersResponse(membersReq.getRoomName(), members));
+            break;
+
         case ADMIN_MESSAGE_DELETE:
             if (!isAdmin()) {
                 sendMessage(new AdminActionResultResponse(false, "관리자 권한이 없습니다."));

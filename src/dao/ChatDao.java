@@ -266,6 +266,33 @@ public class ChatDao {
         return null;
     }
 
+    // 채팅방 참여자 목록 (온라인 여부 포함)
+    public List<User> findRoomMembers(String roomName) {
+        List<User> members = new ArrayList<>();
+        String sql = "SELECT u.user_id, u.nickname, u.role, NVL(u.is_online, 0) AS is_online, NVL(u.is_banned, 0) AS is_banned " +
+                     "FROM ChatRoomUsers cu " +
+                     "JOIN ChatRooms r ON cu.room_id = r.room_id " +
+                     "JOIN users u ON cu.user_id = u.user_id " +
+                     "WHERE r.room_name = ?";
+        try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
+            pstmt.setString(1, roomName);
+            try (ResultSet rs = pstmt.executeQuery()) {
+                while (rs.next()) {
+                    members.add(new User(
+                        rs.getString("user_id"),
+                        rs.getString("nickname"),
+                        rs.getString("role"),
+                        rs.getInt("is_online") == 1,
+                        rs.getInt("is_banned") == 1
+                    ));
+                }
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return members;
+    }
+
     // 친구 목록 조회
     public List<User> getFriends(String userId) {
         List<User> friends = new ArrayList<>();

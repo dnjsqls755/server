@@ -253,6 +253,10 @@ public class ChatService {
         return chatDao.getFriends(userId);
     }
 
+    public List<User> getRoomMembers(String roomName) {
+        return chatDao.findRoomMembers(roomName);
+    }
+
     public FriendOperationResult addFriendByNickname(String userId, String friendNickname) {
         try {
             String friendId = chatDao.findUserIdByNickname(friendNickname);
