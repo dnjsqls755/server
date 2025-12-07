@@ -166,26 +166,32 @@ public class ServerThread extends Thread {
                     DataInputStream dis = new DataInputStream(socket.getInputStream());
                     int length = dis.readInt();
                     System.out.println("[SIGNUP] 이미지 크기: " + length + " bytes");
-                    byte[] imageBytes = new byte[length];
-                    dis.readFully(imageBytes);
+                    
+                    if (length > 0) {
+                        byte[] imageBytes = new byte[length];
+                        dis.readFully(imageBytes);
 
-                    File dir = new File("profile_images");
-                    if (!dir.exists()) dir.mkdirs();
+                        Path profileDir = Path.of("profile_images");
+                        if (!Files.exists(profileDir)) {
+                            Files.createDirectories(profileDir);
+                        }
 
-                    String fileName = UUID.randomUUID() + ".jpg";
-                    File file = new File(dir, fileName);
+                        BufferedImage originalImage = ImageIO.read(new ByteArrayInputStream(imageBytes));
+                        if (originalImage != null) {
+                            BufferedImage resizedImage = resizeImageMax(originalImage, 256);
+                            
+                            String fileName = joinReq.getUserId() + "_" + System.currentTimeMillis() + ".png";
+                            Path filePath = profileDir.resolve(fileName);
+                            ImageIO.write(resizedImage, "png", filePath.toFile());
 
-                    BufferedImage originalImage = ImageIO.read(new java.io.ByteArrayInputStream(imageBytes));
-                    Image scaledImage = originalImage.getScaledInstance(200, 200, Image.SCALE_SMOOTH);
-                    BufferedImage resizedImage = new BufferedImage(200, 200, BufferedImage.TYPE_INT_RGB);
-                    resizedImage.getGraphics().drawImage(scaledImage, 0, 0, null);
-                    ImageIO.write(resizedImage, "jpg", file);
+                            chatService.updateUserProfileImage(joinReq.getUserId(), filePath.toString());
 
-                    String imagePath = "profile_images/" + fileName;
-                    chatService.updateUserProfileImage(joinReq.getUserId(), imagePath);
-
-                    System.out.println("[SIGNUP] 프로필 이미지 리사이징 완료: " + imagePath);
-                } catch (IOException ex) {
+                            System.out.println("[SIGNUP] 프로필 이미지 리사이징 완료: " + filePath.toString());
+                        }
+                    } else {
+                        System.out.println("[SIGNUP] 프로필 이미지 없음 - 기본값 사용");
+                    }
+                } catch (Exception ex) {
                     System.err.println("[SIGNUP] 이미지 처리 실패: " + ex.getMessage());
                     ex.printStackTrace();
                 }

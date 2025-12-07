@@ -116,19 +116,6 @@ public class ChatService {
         return null;
     }
 
-    public void updateUserProfileImage(String userId, String imagePath) {
-        try {
-            Connection conn = chatDao.getConnection();
-            String sql = "UPDATE users SET profile_img = ? WHERE user_id = ?";
-            PreparedStatement pstmt = conn.prepareStatement(sql);
-            pstmt.setString(1, imagePath);
-            pstmt.setString(2, userId);
-            pstmt.executeUpdate();
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-    }
-
     public void addUser(User user) {
         user.setOnline(true);
         chatDao.addUser(user);
@@ -451,5 +438,9 @@ public class ChatService {
 
     public boolean updateProfileImagePath(String userId, String imagePath) {
         return chatDao.updateProfileImagePath(userId, imagePath);
+    }
+
+    public boolean updateUserProfileImage(String userId, String imagePath) {
+        return updateProfileImagePath(userId, imagePath);
     }
 }

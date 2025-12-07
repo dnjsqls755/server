@@ -16,7 +16,7 @@ public class JoinRequest {
     private String birthDate; // 문자열로 받아서 변환
 
     public JoinRequest(String message) {
-        String[] tokens = message.split(",");
+        String[] tokens = message.split(",", -1);
         this.userId = tokens[0];
         this.name = tokens[1];
         this.password = tokens[2];
