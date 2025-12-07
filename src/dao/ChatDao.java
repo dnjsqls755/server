@@ -775,15 +775,16 @@ public class ChatDao {
         }
         return false;
     }
-    // DB에서 사용자 전체 정보 조회
+    // DB에서 사용자 전체 정보 조회 (이름/성별/생년월일 포함)
     public String[] getUserFullInfo(String userId) {
-        String sql = "SELECT nickname, email, phone, address, detail_address, postal_code, gender, " +
+        String sql = "SELECT name, nickname, email, phone, address, detail_address, postal_code, gender, " +
                      "TO_CHAR(birth_date, 'YYYY-MM-DD') AS birth_date FROM Users WHERE user_id = ?";
         try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
             pstmt.setString(1, userId);
             ResultSet rs = pstmt.executeQuery();
             if (rs.next()) {
                 return new String[]{
+                    rs.getString("name") != null ? rs.getString("name") : "",
                     rs.getString("nickname") != null ? rs.getString("nickname") : "",
                     rs.getString("email") != null ? rs.getString("email") : "",
                     rs.getString("phone") != null ? rs.getString("phone") : "",
@@ -797,7 +798,7 @@ public class ChatDao {
         } catch (SQLException e) {
             e.printStackTrace();
         }
-        return new String[]{"", "", "", "", "", "", "", ""};
+        return new String[]{"", "", "", "", "", "", "", "", ""};
     }
 
     // 메시지 ID로 채팅방 이름 조회

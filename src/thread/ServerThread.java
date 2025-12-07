@@ -837,25 +837,29 @@ public class ServerThread extends Thread {
             ProfileImageRequest profileImgReq = new ProfileImageRequest(message);
             try {
                 String imagePath = chatService.getProfileImagePath(profileImgReq.getUserId());
-                
+                String[] info = chatService.getUserFullInfo(profileImgReq.getUserId());
+                String name = info.length > 0 ? info[0] : "";
+                String gender = info.length > 7 ? info[7] : "";
+                String birth = info.length > 8 ? info[8] : "";
+
                 if (imagePath == null || imagePath.trim().isEmpty()) {
                     // 프로필 이미지 없음 - DEFAULT 응답
-                    sendMessage(new ProfileImageResponse(profileImgReq.getUserId(), "DEFAULT"));
+                    sendMessage(new ProfileImageResponse(profileImgReq.getUserId(), "DEFAULT", name, gender, birth));
                 } else {
                     // 파일 읽기
                     File imageFile = new File(imagePath);
                     if (imageFile.exists() && imageFile.isFile()) {
                         byte[] imageData = Files.readAllBytes(imageFile.toPath());
                         String base64Image = java.util.Base64.getEncoder().encodeToString(imageData);
-                        sendMessage(new ProfileImageResponse(profileImgReq.getUserId(), base64Image));
+                        sendMessage(new ProfileImageResponse(profileImgReq.getUserId(), base64Image, name, gender, birth));
                     } else {
                         // 파일 경로는 있지만 실제 파일 없음
-                        sendMessage(new ProfileImageResponse(profileImgReq.getUserId(), "DEFAULT"));
+                        sendMessage(new ProfileImageResponse(profileImgReq.getUserId(), "DEFAULT", name, gender, birth));
                     }
                 }
             } catch (Exception e) {
                 e.printStackTrace();
-                sendMessage(new ProfileImageResponse(profileImgReq.getUserId(), "DEFAULT"));
+                sendMessage(new ProfileImageResponse(profileImgReq.getUserId(), "DEFAULT", "", "", ""));
             }
             break;
 
