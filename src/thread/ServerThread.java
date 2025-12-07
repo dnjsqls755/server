@@ -12,6 +12,7 @@ import dto.type.MessageType;
 import java.awt.Image;
 import java.awt.image.BufferedImage;
 import java.io.BufferedReader;
+import java.io.ByteArrayInputStream;
 import java.io.DataInputStream;
 import java.io.File;
 import java.io.IOException;
@@ -866,9 +867,17 @@ public class ServerThread extends Thread {
                     Files.createDirectories(profileDir);
                 }
 
+                // 업로드 이미지를 회원가입 때와 동일하게 리사이징 (최대 256px 유지, 종횡비 보존)
+                BufferedImage original = ImageIO.read(new ByteArrayInputStream(updateImgReq.getImageData()));
+                if (original == null) {
+                    sendMessage(new ProfileImageUpdateResponse(false, "이미지 파일이 아닙니다."));
+                    break;
+                }
+                BufferedImage resized = resizeImageMax(original, 256);
+
                 String fileName = updateImgReq.getUserId() + "_" + System.currentTimeMillis() + ".png";
                 Path filePath = profileDir.resolve(fileName);
-                Files.write(filePath, updateImgReq.getImageData());
+                ImageIO.write(resized, "png", filePath.toFile());
 
                 boolean imgUpdated = chatService.updateProfileImagePath(updateImgReq.getUserId(), filePath.toString());
                 
@@ -958,6 +967,23 @@ public class ServerThread extends Thread {
         } catch (Exception e) {
             e.printStackTrace();
         }
+    }
+
+    private BufferedImage resizeImageMax(BufferedImage src, int maxSize) {
+        int w = src.getWidth();
+        int h = src.getHeight();
+        if (w <= maxSize && h <= maxSize) {
+            return src;
+        }
+        double scale = Math.min((double) maxSize / w, (double) maxSize / h);
+        int newW = Math.max(1, (int) Math.round(w * scale));
+        int newH = Math.max(1, (int) Math.round(h * scale));
+        Image scaled = src.getScaledInstance(newW, newH, Image.SCALE_SMOOTH);
+        BufferedImage resized = new BufferedImage(newW, newH, BufferedImage.TYPE_INT_ARGB);
+        java.awt.Graphics2D g2 = resized.createGraphics();
+        g2.drawImage(scaled, 0, 0, null);
+        g2.dispose();
+        return resized;
     }
 
     private boolean isAdmin() {
