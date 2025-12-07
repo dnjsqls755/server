@@ -2,6 +2,7 @@ package dao;
 
 import domain.ChatRoom;
 import domain.User;
+import dto.response.ChatHistoryResponse;
 
 import java.sql.Connection;
 import java.util.ArrayList;
@@ -234,8 +235,8 @@ public class ChatDao {
     }
 
     public void saveMessage(String chatRoomName, String senderId, String content) {
-        String sql = "INSERT INTO Messages (message_id, room_id, sender_id, content) " +
-                "VALUES (messages_seq.NEXTVAL, (SELECT room_id FROM ChatRooms WHERE room_name = ?), ?, ?)";
+        String sql = "INSERT INTO Messages (message_id, room_id, sender_id, content, message_type) " +
+                "VALUES (messages_seq.NEXTVAL, (SELECT room_id FROM ChatRooms WHERE room_name = ?), ?, ?, 'TEXT')";
         try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
             pstmt.setString(1, chatRoomName);
             pstmt.setString(2, senderId);
@@ -246,28 +247,117 @@ public class ChatDao {
         }
     }
 
+    public long saveFileMessage(String chatRoomName, String senderId, String fileName, 
+                                String filePath, long fileSize, String mimeType) {
+        String sql = "INSERT INTO Messages (message_id, room_id, sender_id, content, message_type, " +
+                     "file_name, file_path, file_size, mime_type) " +
+                     "VALUES (messages_seq.NEXTVAL, (SELECT room_id FROM ChatRooms WHERE room_name = ?), ?, ?, ?, ?, ?, ?, ?)";
+        try (PreparedStatement pstmt = connection.prepareStatement(sql, new String[]{"message_id"})) {
+            pstmt.setString(1, chatRoomName);
+            pstmt.setString(2, senderId);
+            pstmt.setString(3, fileName);  // content에 파일명 저장
+            
+            // 이미지면 IMAGE, 그 외는 FILE
+            String messageType = mimeType != null && mimeType.startsWith("image/") ? "IMAGE" : "FILE";
+            pstmt.setString(4, messageType);
+            pstmt.setString(5, fileName);
+            pstmt.setString(6, filePath);
+            pstmt.setLong(7, fileSize);
+            pstmt.setString(8, mimeType);
+            
+            pstmt.executeUpdate();
+            
+            // 생성된 message_id 반환
+            ResultSet rs = pstmt.getGeneratedKeys();
+            if (rs.next()) {
+                return rs.getLong(1);
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return -1;
+    }
+
+    public FileInfo getFileInfo(long messageId) {
+        String sql = "SELECT file_name, file_path, file_size, mime_type FROM Messages WHERE message_id = ?";
+        try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
+            pstmt.setLong(1, messageId);
+            ResultSet rs = pstmt.executeQuery();
+            if (rs.next()) {
+                return new FileInfo(
+                    rs.getString("file_name"),
+                    rs.getString("file_path"),
+                    rs.getLong("file_size"),
+                    rs.getString("mime_type")
+                );
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return null;
+    }
+
+    public static class FileInfo {
+        public final String fileName;
+        public final String filePath;
+        public final long fileSize;
+        public final String mimeType;
+
+        public FileInfo(String fileName, String filePath, long fileSize, String mimeType) {
+            this.fileName = fileName;
+            this.filePath = filePath;
+            this.fileSize = fileSize;
+            this.mimeType = mimeType;
+        }
+    }
+
     // 채팅 메시지 내부 클래스
     public static class ChatMessage {
         private String nickname;
         private String content;
         private String sentAt;
+        private String messageType;
+        private Long messageId;
+        private String fileName;
+        private String mimeType;
+        private Long fileSize;
 
         public ChatMessage(String nickname, String content, String sentAt) {
             this.nickname = nickname;
             this.content = content;
             this.sentAt = sentAt;
+            this.messageType = "TEXT";
+        }
+
+        public ChatMessage(String nickname, String content, String sentAt, String messageType,
+                          Long messageId, String fileName, String mimeType, Long fileSize) {
+            this.nickname = nickname;
+            this.content = content;
+            this.sentAt = sentAt;
+            this.messageType = messageType;
+            this.messageId = messageId;
+            this.fileName = fileName;
+            this.mimeType = mimeType;
+            this.fileSize = fileSize;
         }
 
         public String getNickname() { return nickname; }
         public String getContent() { return content; }
         public String getSentAt() { return sentAt; }
+        public String getMessageType() { return messageType; }
+        public Long getMessageId() { return messageId; }
+        public String getFileName() { return fileName; }
+        public String getMimeType() { return mimeType; }
+        public Long getFileSize() { return fileSize; }
+        public boolean isFileMessage() { return "IMAGE".equals(messageType) || "FILE".equals(messageType); }
     }
 
     // 채팅방의 이전 메시지 불러오기 (시간 포함)
     public List<ChatMessage> loadMessages(String roomName, int limit) {
         List<ChatMessage> messages = new ArrayList<>();
         // 최근 100개(요청 limit) 메시지 그대로 가져와 시간 표시 (닉네임 항상 표시)
-        String sql = "SELECT u.nickname, m.content, TO_CHAR(m.sent_at,'HH24:MI') AS sent_time " +
+        String sql = "SELECT u.nickname, m.content, TO_CHAR(m.sent_at,'HH24:MI') AS sent_time, " +
+                     "m.message_type, m.message_id, m.file_name, m.mime_type, m.file_size " +
                      "FROM Messages m " +
                      "JOIN ChatRooms r ON m.room_id = r.room_id " +
                      "JOIN users u ON m.sender_id = u.user_id " +
@@ -279,11 +369,25 @@ public class ChatDao {
             pstmt.setInt(2, limit);
             ResultSet rs = pstmt.executeQuery();
             while (rs.next()) {
-                messages.add(new ChatMessage(
+                String msgType = rs.getString("message_type");
+                if ("TEXT".equals(msgType)) {
+                    messages.add(new ChatMessage(
                         rs.getString("nickname"),
                         rs.getString("content"),
                         rs.getString("sent_time")
-                ));
+                    ));
+                } else {
+                    messages.add(new ChatMessage(
+                        rs.getString("nickname"),
+                        rs.getString("content"),
+                        rs.getString("sent_time"),
+                        msgType,
+                        rs.getLong("message_id"),
+                        rs.getString("file_name"),
+                        rs.getString("mime_type"),
+                        rs.getLong("file_size")
+                    ));
+                }
             }
             System.out.println("[DB] 최근 메시지 로드 완료 - 방:" + roomName + ", 개수:" + messages.size());
         } catch (SQLException e) {
@@ -577,10 +681,27 @@ public class ChatDao {
     }
 
     public boolean deleteMessage(long messageId) {
+        // 먼저 메시지 정보 조회 (파일 경로 필요)
+        FileInfo fileInfo = getFileInfo(messageId);
+        
+        // DB에서 메시지 삭제
         String sql = "DELETE FROM Messages WHERE message_id = ?";
         try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
             pstmt.setLong(1, messageId);
-            return pstmt.executeUpdate() > 0;
+            boolean deleted = pstmt.executeUpdate() > 0;
+            
+            // DB 삭제 성공하면 파일도 삭제
+            if (deleted && fileInfo != null && fileInfo.filePath != null && !fileInfo.filePath.isEmpty()) {
+                try {
+                    java.nio.file.Files.deleteIfExists(java.nio.file.Paths.get(fileInfo.filePath));
+                    System.out.println("[FILE DELETE] 파일 삭제 성공: " + fileInfo.filePath);
+                } catch (Exception e) {
+                    System.err.println("[FILE DELETE] 파일 삭제 실패: " + fileInfo.filePath);
+                    e.printStackTrace();
+                }
+            }
+            
+            return deleted;
         } catch (SQLException e) {
             e.printStackTrace();
         }
@@ -677,5 +798,62 @@ public class ChatDao {
             e.printStackTrace();
         }
         return new String[]{"", "", "", "", "", "", "", ""};
+    }
+
+    // 메시지 ID로 채팅방 이름 조회
+    public String getRoomNameByMessageId(long messageId) {
+        String sql = "SELECT r.room_name FROM Messages m JOIN ChatRooms r ON m.room_id = r.room_id WHERE m.message_id = ?";
+        try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
+            pstmt.setLong(1, messageId);
+            ResultSet rs = pstmt.executeQuery();
+            if (rs.next()) {
+                return rs.getString("room_name");
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return null;
+    }
+
+    // 채팅방의 메시지 이력 조회
+    public java.util.List<ChatHistoryResponse.HistoryEntry> getMessageHistory(String chatRoomName) {
+        java.util.List<ChatHistoryResponse.HistoryEntry> entries = new java.util.ArrayList<>();
+        String sql = "SELECT m.message_id, u.nickname, TO_CHAR(m.sent_at, 'HH24:MI') as time, " +
+                     "m.content, m.message_type, m.file_name, m.mime_type, m.file_size " +
+                     "FROM Messages m " +
+                     "JOIN ChatRooms r ON m.room_id = r.room_id " +
+                     "JOIN Users u ON m.sender_id = u.user_id " +
+                     "WHERE r.room_name = ? " +
+                     "ORDER BY m.sent_at ASC";
+        
+        try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
+            pstmt.setString(1, chatRoomName);
+            ResultSet rs = pstmt.executeQuery();
+            
+            while (rs.next()) {
+                String nickname = rs.getString("nickname");
+                String time = rs.getString("time");
+                String content = rs.getString("content");
+                String messageType = rs.getString("message_type");
+                long messageId = rs.getLong("message_id");
+                String fileName = rs.getString("file_name");
+                String mimeType = rs.getString("mime_type");
+                long fileSize = rs.getLong("file_size");
+                
+                ChatHistoryResponse.HistoryEntry entry;
+                if ("IMAGE".equals(messageType) || "FILE".equals(messageType)) {
+                    entry = new ChatHistoryResponse.HistoryEntry(nickname, time, content, 
+                                                                 messageType, messageId, fileName, mimeType, fileSize);
+                } else {
+                    entry = new ChatHistoryResponse.HistoryEntry(nickname, time, content);
+                }
+                entries.add(entry);
+            }
+        } catch (SQLException e) {
+            System.err.println("[getMessageHistory] 오류: " + e.getMessage());
+            e.printStackTrace();
+        }
+        
+        return entries;
     }
 }

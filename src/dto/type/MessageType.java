@@ -1,5 +1,5 @@
 package dto.type;
 
 public enum MessageType {
-    ENTER, CHAT, EXIT, WHISPER
+    ENTER, EXIT, CHAT, WHISPER, SYSTEM
 }

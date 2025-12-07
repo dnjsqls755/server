@@ -4,7 +4,6 @@ import dao.ChatDao;
 import domain.ChatRoom;
 import domain.User;
 import dto.request.JoinRequest;
-import service.FriendOperationResult;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -427,5 +426,22 @@ public class ChatService {
 
     public String[] getUserFullInfo(String userId) {
         return chatDao.getUserFullInfo(userId);
+    }
+
+    public long saveFileMessage(String chatRoomName, String senderId, String fileName,
+                                String filePath, long fileSize, String mimeType) {
+        return chatDao.saveFileMessage(chatRoomName, senderId, fileName, filePath, fileSize, mimeType);
+    }
+
+    public ChatDao.FileInfo getFileInfo(long messageId) {
+        return chatDao.getFileInfo(messageId);
+    }
+
+    public String getRoomNameByMessageId(long messageId) {
+        return chatDao.getRoomNameByMessageId(messageId);
+    }
+
+    public java.util.List<dto.response.ChatHistoryResponse.HistoryEntry> getMessageHistory(String chatRoomName) {
+        return chatDao.getMessageHistory(chatRoomName);
     }
 }

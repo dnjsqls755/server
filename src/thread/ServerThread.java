@@ -18,6 +18,8 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.net.Socket;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -257,7 +259,17 @@ public class ServerThread extends Thread {
                 if (!history.isEmpty()) {
                     List<ChatHistoryResponse.HistoryEntry> entries = new ArrayList<>();
                     for (ChatDao.ChatMessage msg : history) {
-                        entries.add(new ChatHistoryResponse.HistoryEntry(msg.getNickname(), msg.getSentAt(), msg.getContent()));
+                        if ("IMAGE".equals(msg.getMessageType()) || "FILE".equals(msg.getMessageType())) {
+                            // 파일 메시지
+                            entries.add(new ChatHistoryResponse.HistoryEntry(
+                                msg.getNickname(), msg.getSentAt(), msg.getContent(),
+                                msg.getMessageType(), msg.getMessageId(), msg.getFileName(),
+                                msg.getMimeType(), msg.getFileSize()
+                            ));
+                        } else {
+                            // 텍스트 메시지
+                            entries.add(new ChatHistoryResponse.HistoryEntry(msg.getNickname(), msg.getSentAt(), msg.getContent()));
+                        }
                     }
                     sendMessage(new ChatHistoryResponse(enterReq.getChatRoomName(), entries));
                     System.out.println("[ENTER_CHAT] 이전 대화 " + entries.size() + "개 전송 완료 - 방: " + enterReq.getChatRoomName());
@@ -588,9 +600,29 @@ public class ServerThread extends Thread {
                 break;
             }
             AdminMessageDeleteRequest deleteReq = new AdminMessageDeleteRequest(message, true);
+            
+            // 메시지 ID로 채팅방 조회
+            String messageRoomName = chatService.getRoomNameByMessageId(deleteReq.getMessageId());
+            
+            // DB에서 메시지 삭제
             boolean deleted = chatService.deleteMessage(deleteReq.getMessageId());
+            
+            // 관리자에게 응답
             sendMessage(new AdminActionResultResponse(deleted, deleted ? "메시지가 삭제되었습니다." : "메시지 삭제에 실패했습니다."));
-            System.out.println("[ADMIN] 메시지 삭제: ID=" + deleteReq.getMessageId() + ", 결과=" + deleted);
+            
+            // 채팅방의 모든 사용자에게 채팅 이력 새로고침 브로드캐스트
+            if (deleted && messageRoomName != null && !messageRoomName.isEmpty()) {
+                // 삭제된 메시지가 속한 채팅방의 모든 메시지 이력 조회
+                java.util.List<ChatHistoryResponse.HistoryEntry> historyEntries = chatService.getMessageHistory(messageRoomName);
+                
+                // 채팅 이력을 CHAT_HISTORY 형식으로 브로드캐스트
+                ChatHistoryResponse historyResponse = new ChatHistoryResponse(messageRoomName, historyEntries);
+                broadcastToRoom(messageRoomName, historyResponse);
+                
+                System.out.println("[ADMIN] 메시지 삭제: ID=" + deleteReq.getMessageId() + ", 방=" + messageRoomName + " (채팅 이력 새로고침 브로드캐스트됨)");
+            } else {
+                System.out.println("[ADMIN] 메시지 삭제 실패: ID=" + deleteReq.getMessageId());
+            }
             break;
 
         case ADMIN_ROOM_DELETE:
@@ -729,6 +761,74 @@ public class ServerThread extends Thread {
                 System.out.println("[CHAT_ROOM_INVITE_ACCEPT] 입장 완료 - 방: " + acceptReq.getRoomName() + ", 사용자: " + acceptReq.getUserId());
             } else {
                 System.out.println("[CHAT_ROOM_INVITE_ACCEPT] 입장 실패 - 방: " + acceptReq.getRoomName() + ", 사용자: " + acceptReq.getUserId());
+            }
+            break;
+
+        case FILE_UPLOAD:
+            FileUploadRequest fileReq = new FileUploadRequest(message);
+            try {
+                Path uploadDir = Path.of("uploaded_files");
+                if (!Files.exists(uploadDir)) {
+                    Files.createDirectories(uploadDir);
+                }
+
+                String uniqueFileName = UUID.randomUUID() + "_" + fileReq.getFileName();
+                Path filePath = uploadDir.resolve(uniqueFileName);
+                Files.write(filePath, fileReq.getFileData());
+
+                long messageId = chatService.saveFileMessage(
+                    fileReq.getChatRoomName(),
+                    fileReq.getSenderId(),
+                    fileReq.getFileName(),
+                    filePath.toString(),
+                    fileReq.getFileSize(),
+                    fileReq.getMimeType()
+                );
+                
+                if (messageId > 0) {
+                    sendMessage(new FileUploadResponse(true, "파일 업로드 성공", messageId));
+                    User sender = chatService.getUser(fileReq.getSenderId());
+                    String nickname = sender != null ? sender.getNickName() : fileReq.getSenderId();
+                    FileMessageResponse fileMsg = new FileMessageResponse(
+                        fileReq.getChatRoomName(),
+                        nickname,
+                        messageId,
+                        fileReq.getFileName(),
+                        fileReq.getMimeType(),
+                        fileReq.getFileSize(),
+                        new java.text.SimpleDateFormat("HH:mm").format(new java.util.Date())
+                    );
+                    broadcastToRoom(fileReq.getChatRoomName(), fileMsg);
+                } else {
+                    sendMessage(new FileUploadResponse(false, "파일 저장 실패", -1));
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+                sendMessage(new FileUploadResponse(false, "파일 업로드 오류: " + e.getMessage(), -1));
+            }
+            break;
+
+        case FILE_DOWNLOAD:
+            FileDownloadRequest downloadReq = new FileDownloadRequest(message);
+            try {
+                ChatDao.FileInfo fileInfo = chatService.getFileInfo(downloadReq.getMessageId());
+                if (fileInfo != null) {
+                    byte[] fileData = Files.readAllBytes(Path.of(fileInfo.filePath));
+                    FileDownloadResponse downloadResp = new FileDownloadResponse(
+                        downloadReq.getChatRoomName(),
+                        downloadReq.getMessageId(),
+                        fileInfo.fileName,
+                        fileInfo.mimeType,
+                        fileInfo.fileSize,
+                        fileData
+                    );
+                    sendMessage(downloadResp);
+                } else {
+                    sendMessage(new FileUploadResponse(false, "파일 정보를 찾을 수 없습니다.", -1));
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+                sendMessage(new FileUploadResponse(false, "파일 다운로드 오류: " + e.getMessage(), -1));
             }
             break;
 
