@@ -1,4 +1,3 @@
-C:\ThisIsJava\workspace\server2\src\Main.java
 C:\ThisIsJava\workspace\server2\src\app\ServerApplication.java
 C:\ThisIsJava\workspace\server2\src\dao\ChatDao.java
 C:\ThisIsJava\workspace\server2\src\domain\ChatRoom.java
@@ -72,3 +71,4 @@ C:\ThisIsJava\workspace\server2\src\service\ChatService.java
 C:\ThisIsJava\workspace\server2\src\service\FriendOperationResult.java
 C:\ThisIsJava\workspace\server2\src\thread\ClientExitException.java
 C:\ThisIsJava\workspace\server2\src\thread\ServerThread.java
+C:\ThisIsJava\workspace\server2\src\Main.java

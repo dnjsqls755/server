@@ -23,32 +23,31 @@ public class ChatService {
         try {
             Connection conn = chatDao.getConnection();
 
-            String sql = "INSERT INTO users (user_id, name, password, profile_img, status_msg, nickname, email, phone, address, detail_address, postal_code, gender, birth_date) " +
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+            String sql = "INSERT INTO users (user_id, name, password, profile_img, nickname, email, phone, address, detail_address, postal_code, gender, birth_date) " +
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
             PreparedStatement pstmt = conn.prepareStatement(sql);
             pstmt.setString(1, req.getUserId());
             pstmt.setString(2, req.getName());
             pstmt.setString(3, req.getPassword());
             pstmt.setString(4, req.getProfileImg());
-            pstmt.setString(5, req.getStatusMsg());
-            pstmt.setString(6, req.getNickname());
-            pstmt.setString(7, req.getEmail());
-            pstmt.setString(8, req.getPhone());
-            pstmt.setString(9, req.getAddress());
-            pstmt.setString(10, req.getDetailAddress());
-            pstmt.setString(11, req.getPostalCode());
-            pstmt.setString(12, req.getGender());
+            pstmt.setString(5, req.getNickname());
+            pstmt.setString(6, req.getEmail());
+            pstmt.setString(7, req.getPhone());
+            pstmt.setString(8, req.getAddress());
+            pstmt.setString(9, req.getDetailAddress());
+            pstmt.setString(10, req.getPostalCode());
+            pstmt.setString(11, req.getGender());
             
             // 생년월일 처리 - null 또는 빈 문자열 체크
             if (req.getBirthDate() != null && !req.getBirthDate().trim().isEmpty()) {
                 try {
-                    pstmt.setDate(13, java.sql.Date.valueOf(req.getBirthDate()));
+                    pstmt.setDate(12, java.sql.Date.valueOf(req.getBirthDate()));
                 } catch (IllegalArgumentException e) {
                     System.err.println("[SIGNUP] 생년월일 형식 오류: " + req.getBirthDate() + " (yyyy-MM-dd 형식 필요)");
-                    pstmt.setDate(13, null);
+                    pstmt.setDate(12, null);
                 }
             } else {
-                pstmt.setDate(13, null);
+                pstmt.setDate(12, null);
             }
 
             int rows = pstmt.executeUpdate();
