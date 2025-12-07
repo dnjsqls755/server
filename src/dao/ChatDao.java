@@ -856,4 +856,36 @@ public class ChatDao {
         
         return entries;
     }
+
+    // 사용자 프로필 이미지 경로 조회
+    public String getProfileImagePath(String userId) {
+        String sql = "SELECT profile_img FROM Users WHERE user_id = ?";
+        try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
+            pstmt.setString(1, userId);
+            ResultSet rs = pstmt.executeQuery();
+            if (rs.next()) {
+                return rs.getString("profile_img");
+            }
+        } catch (SQLException e) {
+            System.err.println("[getProfileImagePath] 오류: " + e.getMessage());
+            e.printStackTrace();
+        }
+        return null;
+    }
+
+    // 사용자 프로필 이미지 경로 업데이트
+    public boolean updateProfileImagePath(String userId, String imagePath) {
+        String sql = "UPDATE Users SET profile_img = ? WHERE user_id = ?";
+        try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
+            pstmt.setString(1, imagePath);
+            pstmt.setString(2, userId);
+            int rows = pstmt.executeUpdate();
+            System.out.println("[updateProfileImagePath] 사용자 " + userId + " 프로필 이미지 업데이트: " + imagePath);
+            return rows > 0;
+        } catch (SQLException e) {
+            System.err.println("[updateProfileImagePath] 오류: " + e.getMessage());
+            e.printStackTrace();
+        }
+        return false;
+    }
 }

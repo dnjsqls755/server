@@ -832,6 +832,57 @@ public class ServerThread extends Thread {
             }
             break;
 
+        case PROFILE_IMAGE:
+            ProfileImageRequest profileImgReq = new ProfileImageRequest(message);
+            try {
+                String imagePath = chatService.getProfileImagePath(profileImgReq.getUserId());
+                
+                if (imagePath == null || imagePath.trim().isEmpty()) {
+                    // 프로필 이미지 없음 - DEFAULT 응답
+                    sendMessage(new ProfileImageResponse(profileImgReq.getUserId(), "DEFAULT"));
+                } else {
+                    // 파일 읽기
+                    File imageFile = new File(imagePath);
+                    if (imageFile.exists() && imageFile.isFile()) {
+                        byte[] imageData = Files.readAllBytes(imageFile.toPath());
+                        String base64Image = java.util.Base64.getEncoder().encodeToString(imageData);
+                        sendMessage(new ProfileImageResponse(profileImgReq.getUserId(), base64Image));
+                    } else {
+                        // 파일 경로는 있지만 실제 파일 없음
+                        sendMessage(new ProfileImageResponse(profileImgReq.getUserId(), "DEFAULT"));
+                    }
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+                sendMessage(new ProfileImageResponse(profileImgReq.getUserId(), "DEFAULT"));
+            }
+            break;
+
+        case PROFILE_IMAGE_UPDATE:
+            ProfileImageUpdateRequest updateImgReq = new ProfileImageUpdateRequest(message);
+            try {
+                Path profileDir = Path.of("profile_images");
+                if (!Files.exists(profileDir)) {
+                    Files.createDirectories(profileDir);
+                }
+
+                String fileName = updateImgReq.getUserId() + "_" + System.currentTimeMillis() + ".png";
+                Path filePath = profileDir.resolve(fileName);
+                Files.write(filePath, updateImgReq.getImageData());
+
+                boolean imgUpdated = chatService.updateProfileImagePath(updateImgReq.getUserId(), filePath.toString());
+                
+                if (imgUpdated) {
+                    sendMessage(new ProfileImageUpdateResponse(true, "프로필 이미지가 업데이트되었습니다."));
+                } else {
+                    sendMessage(new ProfileImageUpdateResponse(false, "프로필 이미지 업데이트 실패"));
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+                sendMessage(new ProfileImageUpdateResponse(false, "프로필 이미지 업데이트 오류: " + e.getMessage()));
+            }
+            break;
+
         default:
             System.out.println("???? ?? ??? ??: " + type);
             break;

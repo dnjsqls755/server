@@ -444,4 +444,12 @@ public class ChatService {
     public java.util.List<dto.response.ChatHistoryResponse.HistoryEntry> getMessageHistory(String chatRoomName) {
         return chatDao.getMessageHistory(chatRoomName);
     }
+
+    public String getProfileImagePath(String userId) {
+        return chatDao.getProfileImagePath(userId);
+    }
+
+    public boolean updateProfileImagePath(String userId, String imagePath) {
+        return chatDao.updateProfileImagePath(userId, imagePath);
+    }
 }
