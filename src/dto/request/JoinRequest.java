@@ -15,7 +15,7 @@ public class JoinRequest {
     private String birthDate;
 
     public JoinRequest(String message) {
-        String[] tokens = message.split(",", -1);
+        String[] tokens = message.split("\\|", -1);
         this.userId = tokens[0];
         this.name = tokens[1];
         this.password = tokens[2];
